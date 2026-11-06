@@ -94,25 +94,27 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     function showChoices(answer: number, id: number) {
       clearChoices();
       const choices = makeChoices(answer);
-      const choiceWidth = 104;
-      const gap = 12;
-      const startX = (VW - (choiceWidth * choices.length + gap * (choices.length - 1))) / 2;
+      const choiceRadius = 32;
+      const gap = 48;
+      const totalWidth = choiceRadius * 2 * choices.length + gap * (choices.length - 1);
+      const startX = (VW - totalWidth) / 2 + choiceRadius;
 
       choices.forEach((choice, index) => {
-        const x = startX + index * (choiceWidth + gap);
+        const x = startX + index * (choiceRadius * 2 + gap);
+        const color = ballColors[index % ballColors.length];
         const button = k.add([
-          k.rect(choiceWidth, 48, { radius: 9 }),
-          k.color(45, 50, 64),
+          k.circle(choiceRadius),
+          k.color(color),
           k.area(),
           k.anchor("center"),
-          k.pos(x + choiceWidth / 2, VH - 42),
+          k.pos(x, VH - 42),
         ]);
-        button.outline = { color: k.rgb(250, 204, 21), width: 2 };
+        button.outline = { color: k.rgb(255, 255, 255), width: 3 };
         const label = k.add([
           k.text(String(choice), { size: 22 }),
           k.color(255, 255, 255),
           k.anchor("center"),
-          k.pos(x + choiceWidth / 2, VH - 42),
+          k.pos(x, VH - 42),
         ]);
         button.onClick(() => {
           const problem = activeProblems.get(id);
@@ -126,7 +128,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
             feedbackLabel.color = k.rgb(34, 197, 94);
             k.wait(0.65, spawnBall);
           } else {
-            feedbackLabel.text = "Not quite — try another choice!";
+            feedbackLabel.text = "Not quite — try another ball!";
             feedbackLabel.color = k.rgb(250, 204, 21);
           }
         });
@@ -173,7 +175,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       });
 
       hintLabel.text = problem.hint;
-      feedbackLabel.text = "Choose the answer below!";
+      feedbackLabel.text = "Tap the matching answer ball!";
       showChoices(problem.answer, id);
 
       // Give players time to read the equation and hint before the ball starts falling.
