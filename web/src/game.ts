@@ -137,14 +137,28 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         k.pos(ball.pos.x, ball.pos.y),
       ]);
       const id = nextProblemId++;
-      activeProblems.set(id, {
-        answer: problem.answer,
-        pop: () => {
-          k.destroy(ball);
-          k.destroy(equation);
-          activeProblems.delete(id);
-        },
-      });
+activeProblems.set(id, {
+  answer: problem.answer,
+  pop: () => {
+    activeProblems.delete(id);
+
+    let scale = 1;
+
+    const shrink = ball.onUpdate(() => {
+      scale -= k.dt() * 5;
+
+      ball.scale = k.vec2(scale);
+      equation.scale = k.vec2(scale);
+      equation.pos = ball.pos;
+
+      if (scale <= 0.05) {
+        shrink.cancel();
+        k.destroy(ball);
+        k.destroy(equation);
+      }
+    });
+  },
+});
 
       // Keep the equation centered in its ball and pop the pair together on a hit.
       ball.onUpdate(() => {
