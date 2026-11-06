@@ -1,11 +1,12 @@
 import kaplay from "kaplay";
 
-// Catch each falling math ball by typing its answer before it reaches the bottom.
+// Solve each falling math ball by tapping its answer before it reaches the bottom.
 const VW = 400;
 const VH = 600;
 const BALL_RADIUS = 38;
 const MAX_LIVES = 3;
 const BALL_LIMIT_Y = VH - 112;
+const BALL_WAIT_SECONDS = 2;
 
 export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => void): () => void {
   const k = kaplay({
@@ -21,9 +22,9 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
   k.scene("play", () => {
     let score = 0;
     let lives = MAX_LIVES;
-    let answerInput = "";
     let nextProblemId = 0;
     const activeProblems = new Map<number, { answer: number; pop: () => void }>();
+    const choiceObjects: { destroy: () => void }[] = [];
     onScore(0);
 
     const scoreLabel = k.add([
@@ -37,98 +38,110 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.anchor("topright"),
       k.pos(VW - 16, 12),
     ]);
-
-    const answerBox = k.add([
-      k.rect(220, 54, { radius: 10 }),
-      k.color(45, 50, 64),
+    const hintLabel = k.add([
+      k.text("Get ready...", { size: 16 }),
+      k.color(250, 204, 21),
       k.anchor("center"),
-      k.pos(VW / 2, VH - 42),
+      k.pos(VW / 2, VH - 116),
     ]);
-    answerBox.outline = { color: k.rgb(250, 204, 21), width: 3 };
-    k.add([
-      k.text("TYPE ANSWER  •  ENTER", { size: 14 }),
+    const feedbackLabel = k.add([
+      k.text("A ball will wait before it falls!", { size: 14 }),
       k.color(190, 195, 210),
       k.anchor("center"),
       k.pos(VW / 2, VH - 87),
     ]);
-    const inputLabel = k.add([
-      k.text("", { size: 26 }),
-      k.color(255, 255, 255),
-      k.anchor("center"),
-      k.pos(VW / 2, VH - 42),
-    ]);
-    const feedbackLabel = k.add([
-      k.text("Solve a ball to pop it!", { size: 14 }),
-      k.color(190, 195, 210),
-      k.anchor("center"),
-      k.pos(VW / 2, VH - 120),
-    ]);
-
-    function updateInput() {
-      inputLabel.text = answerInput || "_";
-    }
-
-    function submitAnswer() {
-      if (!answerInput) return;
-      const answer = Number(answerInput);
-      answerInput = "";
-      updateInput();
-      const match = Array.from(activeProblems.values()).find((problem) => problem.answer === answer);
-      if (!match) {
-        feedbackLabel.text = "Not quite — try another answer!";
-        feedbackLabel.color = k.rgb(250, 204, 21);
-        return;
-      }
-
-      match.pop();
-      score += 1;
-      scoreLabel.text = `Score: ${score}`;
-      onScore(score);
-      feedbackLabel.text = "POP! Great job!";
-      feedbackLabel.color = k.rgb(34, 197, 94);
-    }
-
-    for (const digit of "0123456789") {
-      k.onKeyPress(digit, () => {
-        if (answerInput.length < 3) answerInput += digit;
-        updateInput();
-      });
-    }
-    k.onKeyPress("backspace", () => {
-      answerInput = answerInput.slice(0, -1);
-      updateInput();
-    });
-    k.onKeyPress("enter", submitAnswer);
-    k.onKeyPress("numenter", submitAnswer);
 
     const ballColors = [
-      k.rgb(239, 68, 68),   // red
-      k.rgb(59, 130, 246),  // blue
-      k.rgb(34, 197, 94),   // green
-      k.rgb(250, 204, 21),  // yellow
+      k.rgb(239, 68, 68),
+      k.rgb(59, 130, 246),
+      k.rgb(34, 197, 94),
+      k.rgb(250, 204, 21),
     ];
 
-    function makeProblem(): { text: string; answer: number } {
+    function makeProblem(): { text: string; answer: number; hint: string } {
       const first = Math.floor(k.rand(1, 11));
       const second = Math.floor(k.rand(1, 11));
       if (k.rand() < 0.5) {
-        return { text: `${first} + ${second}`, answer: first + second };
+        return {
+          text: `${first} + ${second}`,
+          answer: first + second,
+          hint: `Hint: start at ${first}, then count up ${second}.`,
+        };
       }
       const larger = Math.max(first, second);
       const smaller = Math.min(first, second);
-      return { text: `${larger} - ${smaller}`, answer: larger - smaller };
+      return {
+        text: `${larger} - ${smaller}`,
+        answer: larger - smaller,
+        hint: `Hint: start at ${larger}, then count back ${smaller}.`,
+      };
+    }
+
+    function makeChoices(answer: number): number[] {
+      const choices = new Set([answer]);
+      while (choices.size < 3) {
+        const offset = Math.floor(k.rand(1, 5));
+        choices.add(Math.max(0, answer + (k.rand() < 0.5 ? -offset : offset)));
+      }
+      return k.shuffle(Array.from(choices));
+    }
+
+    function clearChoices() {
+      for (const object of choiceObjects) object.destroy();
+      choiceObjects.length = 0;
+    }
+
+    function showChoices(answer: number, id: number) {
+      clearChoices();
+      const choices = makeChoices(answer);
+      const choiceWidth = 104;
+      const gap = 12;
+      const startX = (VW - (choiceWidth * choices.length + gap * (choices.length - 1))) / 2;
+
+      choices.forEach((choice, index) => {
+        const x = startX + index * (choiceWidth + gap);
+        const button = k.add([
+          k.rect(choiceWidth, 48, { radius: 9 }),
+          k.color(45, 50, 64),
+          k.area(),
+          k.anchor("center"),
+          k.pos(x + choiceWidth / 2, VH - 42),
+        ]);
+        button.outline = { color: k.rgb(250, 204, 21), width: 2 };
+        const label = k.add([
+          k.text(String(choice), { size: 22 }),
+          k.color(255, 255, 255),
+          k.anchor("center"),
+          k.pos(x + choiceWidth / 2, VH - 42),
+        ]);
+        button.onClick(() => {
+          const problem = activeProblems.get(id);
+          if (!problem) return;
+          if (choice === problem.answer) {
+            problem.pop();
+            score += 1;
+            scoreLabel.text = `Score: ${score}`;
+            onScore(score);
+            feedbackLabel.text = "POP! Great job!";
+            feedbackLabel.color = k.rgb(34, 197, 94);
+            k.wait(0.65, spawnBall);
+          } else {
+            feedbackLabel.text = "Not quite — try another choice!";
+            feedbackLabel.color = k.rgb(250, 204, 21);
+          }
+        });
+        choiceObjects.push(button, label);
+      });
     }
 
     function spawnBall() {
       const problem = makeProblem();
+      const id = nextProblemId++;
       const ball = k.add([
         k.circle(BALL_RADIUS),
         k.color(k.choose(ballColors)),
-        k.area(),
         k.anchor("center"),
         k.pos(k.rand(BALL_RADIUS, VW - BALL_RADIUS), -BALL_RADIUS),
-        k.move(k.DOWN, k.rand(120, 200)),
-        "math-ball",
       ]);
       const equation = k.add([
         k.text(problem.text, { size: 20 }),
@@ -136,34 +149,43 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         k.anchor("center"),
         k.pos(ball.pos.x, ball.pos.y),
       ]);
-      const id = nextProblemId++;
-activeProblems.set(id, {
-  answer: problem.answer,
-  pop: () => {
-    activeProblems.delete(id);
+      let falling = false;
 
-    let scale = 1;
+      activeProblems.set(id, {
+        answer: problem.answer,
+        pop: () => {
+          if (!activeProblems.has(id)) return;
+          activeProblems.delete(id);
+          clearChoices();
+          let scale = 1;
+          const shrink = ball.onUpdate(() => {
+            scale -= k.dt() * 5;
+            ball.scale = k.vec2(Math.max(0, scale));
+            equation.scale = k.vec2(Math.max(0, scale));
+            equation.pos = ball.pos;
+            if (scale <= 0.05) {
+              shrink.cancel();
+              k.destroy(ball);
+              k.destroy(equation);
+            }
+          });
+        },
+      });
 
-    const shrink = ball.onUpdate(() => {
-      scale -= k.dt() * 5;
+      hintLabel.text = problem.hint;
+      feedbackLabel.text = "Choose the answer below!";
+      showChoices(problem.answer, id);
 
-      ball.scale = k.vec2(scale);
-      equation.scale = k.vec2(scale);
-      equation.pos = ball.pos;
+      // Give players time to read the equation and hint before the ball starts falling.
+      k.wait(BALL_WAIT_SECONDS, () => {
+        if (!activeProblems.has(id)) return;
+        falling = true;
+        ball.use(k.move(k.DOWN, k.rand(120, 200)));
+      });
 
-      if (scale <= 0.05) {
-        shrink.cancel();
-        k.destroy(ball);
-        k.destroy(equation);
-      }
-    });
-  },
-});
-
-      // Keep the equation centered in its ball and pop the pair together on a hit.
       ball.onUpdate(() => {
         equation.pos = ball.pos;
-        if (ball.pos.y > BALL_LIMIT_Y) {
+        if (falling && ball.pos.y > BALL_LIMIT_Y) {
           const missed = activeProblems.get(id);
           if (!missed) return;
           missed.pop();
@@ -171,11 +193,15 @@ activeProblems.set(id, {
           heartsLabel.text = `${"♥ ".repeat(lives)}${"♡ ".repeat(MAX_LIVES - lives)}`.trim();
           feedbackLabel.text = "A ball got away! Keep going!";
           feedbackLabel.color = k.rgb(248, 72, 99);
-          if (lives <= 0) k.go("over", score);
+          if (lives <= 0) {
+            k.go("over", score);
+          } else {
+            k.wait(0.65, spawnBall);
+          }
         }
       });
-      k.wait(k.rand(0.8, 1.2), spawnBall);
     }
+
     spawnBall();
   });
 
