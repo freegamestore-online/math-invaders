@@ -1,10 +1,11 @@
 import kaplay from "kaplay";
 
-// Catch the falling math balls before they reach the bottom of the screen.
+// Catch each falling math ball by typing its answer before it reaches the bottom.
 const VW = 400;
 const VH = 600;
 const BALL_RADIUS = 38;
-const MAX_MISSES = 3;
+const MAX_LIVES = 3;
+const BALL_LIMIT_Y = VH - 112;
 
 export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => void): () => void {
   const k = kaplay({
@@ -19,32 +20,86 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
 
   k.scene("play", () => {
     let score = 0;
-    let misses = 0;
+    let lives = MAX_LIVES;
+    let answerInput = "";
+    let nextProblemId = 0;
+    const activeProblems = new Map<number, { answer: number; pop: () => void }>();
     onScore(0);
 
-    const missLabel = k.add([
-      k.text(`Misses: ${misses}/${MAX_MISSES}`, { size: 18 }),
+    const scoreLabel = k.add([
+      k.text("Score: 0", { size: 18 }),
       k.color(255, 255, 255),
       k.pos(16, 16),
     ]);
-
-    const basket = k.add([
-      k.rect(84, 20, { radius: 5 }),
-      k.color(16, 185, 129),
-      k.area(),
-      k.anchor("center"),
-      k.pos(VW / 2, VH - 44),
-      "basket",
+    const heartsLabel = k.add([
+      k.text("♥ ♥ ♥", { size: 24 }),
+      k.color(248, 72, 99),
+      k.anchor("topright"),
+      k.pos(VW - 16, 12),
     ]);
 
-    // The pointer works on both touchscreens and computers.
-    k.onMouseMove((mpos) => {
-      basket.pos.x = k.clamp(mpos.x, 42, VW - 42);
+    const answerBox = k.add([
+      k.rect(220, 54, { radius: 10 }),
+      k.color(45, 50, 64),
+      k.anchor("center"),
+      k.pos(VW / 2, VH - 42),
+    ]);
+    answerBox.outline = { color: k.rgb(250, 204, 21), width: 3 };
+    k.add([
+      k.text("TYPE ANSWER  •  ENTER", { size: 14 }),
+      k.color(190, 195, 210),
+      k.anchor("center"),
+      k.pos(VW / 2, VH - 87),
+    ]);
+    const inputLabel = k.add([
+      k.text("", { size: 26 }),
+      k.color(255, 255, 255),
+      k.anchor("center"),
+      k.pos(VW / 2, VH - 42),
+    ]);
+    const feedbackLabel = k.add([
+      k.text("Solve a ball to pop it!", { size: 14 }),
+      k.color(190, 195, 210),
+      k.anchor("center"),
+      k.pos(VW / 2, VH - 120),
+    ]);
+
+    function updateInput() {
+      inputLabel.text = answerInput || "_";
+    }
+
+    function submitAnswer() {
+      if (!answerInput) return;
+      const answer = Number(answerInput);
+      answerInput = "";
+      updateInput();
+      const match = Array.from(activeProblems.values()).find((problem) => problem.answer === answer);
+      if (!match) {
+        feedbackLabel.text = "Not quite — try another answer!";
+        feedbackLabel.color = k.rgb(250, 204, 21);
+        return;
+      }
+
+      match.pop();
+      score += 1;
+      scoreLabel.text = `Score: ${score}`;
+      onScore(score);
+      feedbackLabel.text = "POP! Great job!";
+      feedbackLabel.color = k.rgb(34, 197, 94);
+    }
+
+    for (const digit of "0123456789") {
+      k.onKeyPress(digit, () => {
+        if (answerInput.length < 3) answerInput += digit;
+        updateInput();
+      });
+    }
+    k.onKeyPress("backspace", () => {
+      answerInput = answerInput.slice(0, -1);
+      updateInput();
     });
-    k.onUpdate(() => {
-      if (k.isKeyDown("left")) basket.pos.x = Math.max(42, basket.pos.x - 6);
-      if (k.isKeyDown("right")) basket.pos.x = Math.min(VW - 42, basket.pos.x + 6);
-    });
+    k.onKeyPress("enter", submitAnswer);
+    k.onKeyPress("numenter", submitAnswer);
 
     const ballColors = [
       k.rgb(239, 68, 68),   // red
@@ -53,16 +108,19 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.rgb(250, 204, 21),  // yellow
     ];
 
-    function makeProblem() {
-      const first = Math.floor(k.rand(1, 10));
-      const second = Math.floor(k.rand(1, 10));
-      if (k.rand() < 0.5) return `${first} + ${second}`;
+    function makeProblem(): { text: string; answer: number } {
+      const first = Math.floor(k.rand(1, 11));
+      const second = Math.floor(k.rand(1, 11));
+      if (k.rand() < 0.5) {
+        return { text: `${first} + ${second}`, answer: first + second };
+      }
       const larger = Math.max(first, second);
       const smaller = Math.min(first, second);
-      return `${larger} - ${smaller}`;
+      return { text: `${larger} - ${smaller}`, answer: larger - smaller };
     }
 
     function spawnBall() {
+      const problem = makeProblem();
       const ball = k.add([
         k.circle(BALL_RADIUS),
         k.color(k.choose(ballColors)),
@@ -73,42 +131,38 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         "math-ball",
       ]);
       const equation = k.add([
-        k.text(makeProblem(), { size: 20 }),
+        k.text(problem.text, { size: 20 }),
         k.color(255, 255, 255),
         k.anchor("center"),
         k.pos(ball.pos.x, ball.pos.y),
       ]);
+      const id = nextProblemId++;
+      activeProblems.set(id, {
+        answer: problem.answer,
+        pop: () => {
+          k.destroy(ball);
+          k.destroy(equation);
+          activeProblems.delete(id);
+        },
+      });
 
-      // Keep the readable equation centered inside its falling ball.
+      // Keep the equation centered in its ball and pop the pair together on a hit.
       ball.onUpdate(() => {
         equation.pos = ball.pos;
+        if (ball.pos.y > BALL_LIMIT_Y) {
+          const missed = activeProblems.get(id);
+          if (!missed) return;
+          missed.pop();
+          lives -= 1;
+          heartsLabel.text = `${"♥ ".repeat(lives)}${"♡ ".repeat(MAX_LIVES - lives)}`.trim();
+          feedbackLabel.text = "A ball got away! Keep going!";
+          feedbackLabel.color = k.rgb(248, 72, 99);
+          if (lives <= 0) k.go("over", score);
+        }
       });
-      k.wait(k.rand(0.7, 1.15), spawnBall);
+      k.wait(k.rand(0.8, 1.2), spawnBall);
     }
     spawnBall();
-
-    basket.onCollide("math-ball", (ball) => {
-      k.destroy(ball);
-      // The equation is a separate text entity; remove the matching label too.
-      k.get("math-label").forEach((label) => {
-        if (label.pos.dist(ball.pos) < 1) k.destroy(label);
-      });
-      score += 1;
-      onScore(score);
-    });
-
-    k.onUpdate("math-ball", (ball) => {
-      if (ball.pos.y > VH + BALL_RADIUS) {
-        const ballPosition = ball.pos;
-        k.destroy(ball);
-        k.get("math-label").forEach((label) => {
-          if (label.pos.dist(ballPosition) < 1) k.destroy(label);
-        });
-        misses += 1;
-        missLabel.text = `Misses: ${misses}/${MAX_MISSES}`;
-        if (misses >= MAX_MISSES) k.go("over", score);
-      }
-    });
   });
 
   k.scene("over", (finalScore: number) => {
