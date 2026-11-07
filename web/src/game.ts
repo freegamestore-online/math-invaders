@@ -4,7 +4,6 @@ import kaplay from "kaplay";
 const VW = 400;
 const VH = 600;
 const BALL_RADIUS = 38;
-const BALL_FALL_SPEED = 100;
 const BALL_STOP_Y = VH - 170;
 const MAX_LIVES = 3;
 
@@ -23,6 +22,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     let score = 0;
     let lives = MAX_LIVES;
     let nextProblemId = 0;
+    let currentLevel = 1;
     const activeProblems = new Map<number, { answer: number; pop: () => void }>();
     const choiceObjects: { destroy: () => void }[] = [];
     onScore(0);
@@ -31,6 +31,12 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.text("Score: 0", { size: 18 }),
       k.color(255, 255, 255),
       k.pos(16, 16),
+    ]);
+    const levelLabel = k.add([
+      k.text("Level 1", { size: 16 }),
+      k.color(96, 165, 250),
+      k.anchor("center"),
+      k.pos(VW / 2, 22),
     ]);
     const heartsLabel = k.add([
       k.text("♥ ♥ ♥", { size: 24 }),
@@ -58,16 +64,30 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.rgb(250, 204, 21),
     ];
 
-    function makeProblem(): { text: string; answer: number; hint: string } {
-      const first = Math.floor(k.rand(1, 11));
-      const second = Math.floor(k.rand(1, 11));
-      if (k.rand() < 0.5) {
+    function getLevelForScore(currentScore: number): number {
+      return Math.min(5, 1 + Math.floor(currentScore / 3));
+    }
+
+    function updateLevel(): void {
+      currentLevel = getLevelForScore(score);
+      levelLabel.text = `Level ${currentLevel}`;
+    }
+
+    function makeProblem(level: number): { text: string; answer: number; hint: string } {
+      const additionChance = level < 2 ? 0.75 : 0.5;
+      const maxValue = 4 + level * 2;
+      const smallMax = Math.min(5 + level, 9);
+      const first = Math.floor(k.rand(1, maxValue + 1));
+      const second = Math.floor(k.rand(1, smallMax + 1));
+
+      if (k.rand() < additionChance) {
         return {
           text: `${first} + ${second}`,
           answer: first + second,
           hint: `Hint: start at ${first}, then count up ${second}.`,
         };
       }
+
       const larger = Math.max(first, second);
       const smaller = Math.min(first, second);
       return {
@@ -77,11 +97,13 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       };
     }
 
-    function makeChoices(answer: number): number[] {
+    function makeChoices(answer: number, level: number): number[] {
       const choices = new Set([answer]);
+      const spread = Math.min(5, 2 + level);
       while (choices.size < 3) {
-        const offset = Math.floor(k.rand(1, 5));
-        choices.add(Math.max(0, answer + (k.rand() < 0.5 ? -offset : offset)));
+        const offset = Math.floor(k.rand(1, spread + 1));
+        const candidate = Math.max(0, answer + (k.rand() < 0.5 ? -offset : offset));
+        choices.add(candidate);
       }
       return k.shuffle(Array.from(choices));
     }
@@ -93,7 +115,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
 
     function showChoices(answer: number, id: number) {
       clearChoices();
-      const choices = makeChoices(answer);
+      const choices = makeChoices(answer, currentLevel);
       const choiceRadius = 32;
       const gap = 48;
       const totalWidth = choiceRadius * 2 * choices.length + gap * (choices.length - 1);
@@ -124,6 +146,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
           problem.pop();
           if (choice === problem.answer) {
             score += 1;
+            updateLevel();
             scoreLabel.text = `Score: ${score}`;
             onScore(score);
             feedbackLabel.text = "POP! Great job!";
@@ -146,8 +169,10 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     }
 
     function spawnBall() {
-      const problem = makeProblem();
+      updateLevel();
+      const problem = makeProblem(currentLevel);
       const id = nextProblemId++;
+      const fallSpeed = 90 + currentLevel * 18;
       const ball = k.add([
         k.circle(BALL_RADIUS),
         k.color(k.choose(ballColors)),
@@ -189,7 +214,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
 
       ball.onUpdate(() => {
         // Let the balloon fall from the top, then hold it above the answer buttons.
-        ball.pos.y = Math.min(BALL_STOP_Y, ball.pos.y + BALL_FALL_SPEED * k.dt());
+        ball.pos.y = Math.min(BALL_STOP_Y, ball.pos.y + fallSpeed * k.dt());
         equation.pos = ball.pos;
       });
     }
