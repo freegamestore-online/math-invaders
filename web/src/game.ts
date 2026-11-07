@@ -1,11 +1,10 @@
 import kaplay from "kaplay";
 
-// Solve each falling math ball by tapping its answer before it reaches the bottom.
+// Solve each math balloon by tapping an answer before choosing another one.
 const VW = 400;
 const VH = 600;
 const BALL_RADIUS = 38;
 const MAX_LIVES = 3;
-const BALL_LIMIT_Y = VH - 112;
 
 export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => void): () => void {
   const k = kaplay({
@@ -22,7 +21,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     let score = 0;
     let lives = MAX_LIVES;
     let nextProblemId = 0;
-    const activeProblems = new Map<number, { answer: number; pop: () => void; startFalling: () => void }>();
+    const activeProblems = new Map<number, { answer: number; pop: () => void }>();
     const choiceObjects: { destroy: () => void }[] = [];
     onScore(0);
 
@@ -44,7 +43,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.pos(VW / 2, VH - 116),
     ]);
     const feedbackLabel = k.add([
-      k.text("Choose an answer to start the balloon!", { size: 14 }),
+      k.text("Choose an answer to pop the balloon!", { size: 14 }),
       k.color(190, 195, 210),
       k.anchor("center"),
       k.pos(VW / 2, VH - 87),
@@ -118,18 +117,26 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         button.onClick(() => {
           const problem = activeProblems.get(id);
           if (!problem) return;
+
+          // Resolve the round on the first choice, whether it is right or wrong.
+          problem.pop();
           if (choice === problem.answer) {
-            problem.pop();
             score += 1;
             scoreLabel.text = `Score: ${score}`;
             onScore(score);
             feedbackLabel.text = "POP! Great job!";
             feedbackLabel.color = k.rgb(34, 197, 94);
-            k.wait(0.65, spawnBall);
           } else {
-            feedbackLabel.text = "Not quite — the balloon is moving! Try again!";
-            feedbackLabel.color = k.rgb(250, 204, 21);
-            problem.startFalling();
+            lives -= 1;
+            heartsLabel.text = `${"♥ ".repeat(lives)}${"♡ ".repeat(MAX_LIVES - lives)}`.trim();
+            feedbackLabel.text = "Wrong answer — the balloon popped!";
+            feedbackLabel.color = k.rgb(248, 72, 99);
+          }
+
+          if (lives <= 0) {
+            k.wait(0.65, () => k.go("over", score));
+          } else {
+            k.wait(0.65, spawnBall);
           }
         });
         choiceObjects.push(button, label);
@@ -143,7 +150,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         k.circle(BALL_RADIUS),
         k.color(k.choose(ballColors)),
         k.anchor("center"),
-        k.pos(k.rand(BALL_RADIUS, VW - BALL_RADIUS), -BALL_RADIUS),
+        k.pos(k.rand(BALL_RADIUS, VW - BALL_RADIUS), VH / 2 - 35),
       ]);
       const equation = k.add([
         k.text(problem.text, { size: 20 }),
@@ -151,16 +158,9 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         k.anchor("center"),
         k.pos(ball.pos.x, ball.pos.y),
       ]);
-      let falling = false;
-      const startFalling = () => {
-        if (falling) return;
-        falling = true;
-        ball.use(k.move(k.DOWN, k.rand(120, 200)));
-      };
 
       activeProblems.set(id, {
         answer: problem.answer,
-        startFalling,
         pop: () => {
           if (!activeProblems.has(id)) return;
           activeProblems.delete(id);
@@ -181,25 +181,12 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       });
 
       hintLabel.text = problem.hint;
-      feedbackLabel.text = "Tap the matching answer to pop the balloon!";
+      feedbackLabel.text = "Tap an answer to pop the balloon!";
+      feedbackLabel.color = k.rgb(190, 195, 210);
       showChoices(problem.answer, id);
 
       ball.onUpdate(() => {
         equation.pos = ball.pos;
-        if (falling && ball.pos.y > BALL_LIMIT_Y) {
-          const missed = activeProblems.get(id);
-          if (!missed) return;
-          missed.pop();
-          lives -= 1;
-          heartsLabel.text = `${"♥ ".repeat(lives)}${"♡ ".repeat(MAX_LIVES - lives)}`.trim();
-          feedbackLabel.text = "A balloon got away! Keep going!";
-          feedbackLabel.color = k.rgb(248, 72, 99);
-          if (lives <= 0) {
-            k.go("over", score);
-          } else {
-            k.wait(0.65, spawnBall);
-          }
-        }
       });
     }
 
