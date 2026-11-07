@@ -1,9 +1,11 @@
 import kaplay from "kaplay";
 
-// Solve each math balloon by tapping an answer before choosing another one.
+// Solve each math balloon by tapping an answer while it falls from the top.
 const VW = 400;
 const VH = 600;
 const BALL_RADIUS = 38;
+const BALL_FALL_SPEED = 100;
+const BALL_STOP_Y = VH - 170;
 const MAX_LIVES = 3;
 
 export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => void): () => void {
@@ -150,7 +152,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         k.circle(BALL_RADIUS),
         k.color(k.choose(ballColors)),
         k.anchor("center"),
-        k.pos(k.rand(BALL_RADIUS, VW - BALL_RADIUS), VH / 2 - 35),
+        k.pos(k.rand(BALL_RADIUS, VW - BALL_RADIUS), -BALL_RADIUS),
       ]);
       const equation = k.add([
         k.text(problem.text, { size: 20 }),
@@ -186,6 +188,8 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       showChoices(problem.answer, id);
 
       ball.onUpdate(() => {
+        // Let the balloon fall from the top, then hold it above the answer buttons.
+        ball.pos.y = Math.min(BALL_STOP_Y, ball.pos.y + BALL_FALL_SPEED * k.dt());
         equation.pos = ball.pos;
       });
     }
