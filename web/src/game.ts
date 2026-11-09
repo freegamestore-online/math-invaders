@@ -17,7 +17,33 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     global: false,
     pixelDensity: Math.min(window.devicePixelRatio || 1, 2),
   });
+k.scene("menu", () => {
+  k.add([
+    k.text("🎈 Math Balloon Pop", { size: 32 }),
+    k.anchor("center"),
+    k.pos(VW / 2, 180),
+    k.color(255, 255, 255),
+  ]);
 
+  const playBtn = k.add([
+    k.rect(200, 70, { radius: 12 }),
+    k.color(34, 197, 94),
+    k.area(),
+    k.anchor("center"),
+    k.pos(VW / 2, 320),
+  ]);
+
+  k.add([
+    k.text("PLAY", { size: 28 }),
+    k.anchor("center"),
+    k.pos(VW / 2, 320),
+    k.color(255, 255, 255),
+  ]);
+
+  playBtn.onClick(() => {
+    k.go("play");
+  });
+});
   k.scene("play", () => {
     let score = 0;
     let lives = MAX_LIVES;
@@ -230,6 +256,6 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     k.onKeyPress("space", () => k.go("play"));
   });
 
-  k.go("play");
+  k.go("menu");
   return () => k.quit();
 }
