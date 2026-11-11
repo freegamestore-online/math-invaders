@@ -51,6 +51,10 @@ k.scene("menu", () => {
     let currentLevel = 1;
     const activeProblems = new Map<number, { answer: number; pop: () => void }>();
     const choiceObjects: { destroy: () => void }[] = [];
+let currentChoices: number[] = [];
+let selectedChoice = 1;
+let typedAnswer = "";
+let answerButtons: any[] = [];
     onScore(0);
 
     const scoreLabel = k.add([
@@ -135,13 +139,21 @@ k.scene("menu", () => {
     }
 
     function clearChoices() {
-      for (const object of choiceObjects) object.destroy();
-      choiceObjects.length = 0;
-    }
+  for (const object of choiceObjects) object.destroy();
+
+  choiceObjects.length = 0;
+  currentChoices = [];
+  answerButtons = [];
+  typedAnswer = "";
+}
+    
 
     function showChoices(answer: number, id: number) {
       clearChoices();
       const choices = makeChoices(answer, currentLevel);
+      currentChoices = choices;
+    selectedChoice = Math.min(1, choices.length - 1);
+      typedAnswer = "";
       const choiceRadius = 32;
       const gap = 48;
       const totalWidth = choiceRadius * 2 * choices.length + gap * (choices.length - 1);
@@ -157,6 +169,7 @@ k.scene("menu", () => {
           k.anchor("center"),
           k.pos(x, VH - 42),
         ]);
+        answerButtons.push(button);
         button.outline = { color: k.rgb(255, 255, 255), width: 3 };
         const label = k.add([
           k.text(String(choice), { size: 22 }),
