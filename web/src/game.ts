@@ -8,6 +8,9 @@ const BALL_STOP_Y = VH - 170;
 const MAX_LIVES = 3;
 
 export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => void): () => void {
+  // Keep the game canvas focusable for keyboard play in desktop browsers.
+  if (canvas.tabIndex < 0) canvas.tabIndex = 0;
+
   const k = kaplay({
     canvas,
     width: VW,
@@ -42,6 +45,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     ]);
 
     playBtn.onClick(() => {
+      canvas.focus();
       k.go("play");
     });
   });
@@ -52,12 +56,13 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     let nextProblemId = 0;
     let currentProblemId: number | null = null;
     let currentLevel = 1;
+    let typedAnswer = "";
+    let selectedChoice = -1;
+    let currentChoices: number[] = [];
+    let answerButtons: any[] = [];
+    let keyboardAttached = false;
     const activeProblems = new Map<number, { answer: number; pop: () => void }>();
     const choiceObjects: { destroy: () => void }[] = [];
-    let currentChoices: number[] = [];
-    let selectedChoice = 1;
-    let typedAnswer = "";
-    let answerButtons: any[] = [];
     onScore(0);
 
     const scoreLabel = k.add([
@@ -160,6 +165,12 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       typedAnswer = "";
     }
 
+    function removeKeyboardInput(): void {
+      if (!keyboardAttached) return;
+      window.removeEventListener("keydown", handleKeyDown);
+      keyboardAttached = false;
+    }
+
     function submitChoice(index: number, id: number): void {
       const problem = activeProblems.get(id);
       const choice = currentChoices[index];
@@ -188,49 +199,50 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       }
     }
 
-    function chooseWithArrow(index: number): void {
-      if (currentProblemId !== null) submitChoice(index, currentProblemId);
-    }
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (currentProblemId === null) return;
 
-    k.onKeyPress("left", () => chooseWithArrow(0));
-    k.onKeyPress("down", () => chooseWithArrow(1));
-    k.onKeyPress("right", () => chooseWithArrow(2));
+      const id = currentProblemId;
+      const problem = activeProblems.get(id);
+      if (!problem) return;
 
-    for (let digit = 0; digit <= 9; digit += 1) {
-      k.onKeyPress(String(digit), () => {
-        if (currentProblemId === null) return;
+      if (event.key === "ArrowLeft" || event.key === "ArrowDown" || event.key === "ArrowRight") {
+        event.preventDefault();
+        const index = event.key === "ArrowLeft" ? 0 : event.key === "ArrowDown" ? 1 : 2;
+        submitChoice(index, id);
+        return;
+      }
 
-        const id = currentProblemId;
-        const problem = activeProblems.get(id);
-        if (!problem) return;
-
-        typedAnswer += String(digit);
-        const matchingChoice = currentChoices.indexOf(Number(typedAnswer));
+      if (/^[0-9]$/.test(event.key)) {
+        event.preventDefault();
+        typedAnswer += event.key;
+        const value = Number(typedAnswer);
+        const matchingChoice = currentChoices.indexOf(value);
         setSelectedChoice(matchingChoice);
         feedbackLabel.text = `Your answer: ${typedAnswer} (Backspace to edit)`;
 
-        // Keep incorrect typed answers editable; the correct number pops the balloon.
-        if (matchingChoice >= 0 && Number(typedAnswer) === problem.answer) {
-          k.wait(0.2, () => submitChoice(matchingChoice, id));
+        // Wrong or partial answers stay editable; the correct number pops the balloon.
+        if (matchingChoice >= 0 && value === problem.answer) {
+          submitChoice(matchingChoice, id);
         }
-      });
-    }
+        return;
+      }
 
-    k.onKeyPress("backspace", () => {
-      if (currentProblemId === null || typedAnswer.length === 0) return;
-      typedAnswer = typedAnswer.slice(0, -1);
-      const matchingChoice = currentChoices.indexOf(Number(typedAnswer));
-      setSelectedChoice(typedAnswer.length > 0 ? matchingChoice : -1);
-      feedbackLabel.text = typedAnswer
-        ? `Your answer: ${typedAnswer} (Backspace to edit)`
-        : "Type the answer, or use ← ↓ → to choose.";
-    });
+      if (event.key === "Backspace" && typedAnswer.length > 0) {
+        event.preventDefault();
+        typedAnswer = typedAnswer.slice(0, -1);
+        const matchingChoice = currentChoices.indexOf(Number(typedAnswer));
+        setSelectedChoice(typedAnswer.length > 0 ? matchingChoice : -1);
+        feedbackLabel.text = typedAnswer
+          ? `Your answer: ${typedAnswer} (Backspace to edit)`
+          : "Type the answer, or use ← ↓ → to choose.";
+      }
+    }
 
     function showChoices(answer: number, id: number): void {
       clearChoices();
       const choices = makeChoices(answer, currentLevel);
       currentChoices = choices;
-      selectedChoice = Math.min(1, choices.length - 1);
       const choiceRadius = 32;
       const gap = 48;
       const totalWidth = choiceRadius * 2 * choices.length + gap * (choices.length - 1);
@@ -247,10 +259,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
           k.pos(x, VH - 42),
         ]);
         answerButtons.push(button);
-        button.outline = {
-          color: k.rgb(255, 255, 255),
-          width: index === selectedChoice ? 5 : 2,
-        };
+        button.outline = { color: k.rgb(255, 255, 255), width: 2 };
         const label = k.add([
           k.text(String(choice), { size: 22 }),
           k.color(255, 255, 255),
@@ -287,6 +296,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
           if (!activeProblems.has(id)) return;
           activeProblems.delete(id);
           if (currentProblemId === id) currentProblemId = null;
+          removeKeyboardInput();
           clearChoices();
           let scale = 1;
           const shrink = ball.onUpdate(() => {
@@ -307,6 +317,8 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       feedbackLabel.text = "Type the answer, or use ← ↓ → to choose.";
       feedbackLabel.color = k.rgb(190, 195, 210);
       showChoices(problem.answer, id);
+      window.addEventListener("keydown", handleKeyDown);
+      keyboardAttached = true;
 
       ball.onUpdate(() => {
         // Let the balloon fall from the top, then hold it above the answer buttons.
@@ -321,11 +333,14 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
   k.scene("over", (finalScore: number) => {
     k.add([k.text("Game Over", { size: 40 }), k.anchor("center"), k.pos(VW / 2, VH / 2 - 30), k.color(255, 255, 255)]);
     k.add([k.text(`Score: ${finalScore}`, { size: 24 }), k.anchor("center"), k.pos(VW / 2, VH / 2 + 16), k.color(16, 185, 129)]);
-    k.add([k.text("tap to play again", { size: 16 }), k.anchor("center"), k.pos(VW / 2, VH / 2 + 56), k.color(160, 160, 160)]);
+    k.add([k.text("tap or press Space to play again", { size: 16 }), k.anchor("center"), k.pos(VW / 2, VH / 2 + 56), k.color(160, 160, 160)]);
     k.onMousePress(() => k.go("play"));
     k.onKeyPress("space", () => k.go("play"));
   });
 
   k.go("menu");
-  return () => k.quit();
+  return () => {
+    window.removeEventListener("keydown", () => {});
+    k.quit();
+  };
 }
