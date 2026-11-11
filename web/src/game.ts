@@ -17,44 +17,47 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     global: false,
     pixelDensity: Math.min(window.devicePixelRatio || 1, 2),
   });
-k.scene("menu", () => {
-  k.add([
-    k.text("🎈 Math Balloon Pop", { size: 32 }),
-    k.anchor("center"),
-    k.pos(VW / 2, 180),
-    k.color(255, 255, 255),
-  ]);
 
-  const playBtn = k.add([
-    k.rect(200, 70, { radius: 12 }),
-    k.color(34, 197, 94),
-    k.area(),
-    k.anchor("center"),
-    k.pos(VW / 2, 320),
-  ]);
+  k.scene("menu", () => {
+    k.add([
+      k.text("🎈 Math Balloon Pop", { size: 32 }),
+      k.anchor("center"),
+      k.pos(VW / 2, 180),
+      k.color(255, 255, 255),
+    ]);
 
-  k.add([
-    k.text("PLAY", { size: 28 }),
-    k.anchor("center"),
-    k.pos(VW / 2, 320),
-    k.color(255, 255, 255),
-  ]);
+    const playBtn = k.add([
+      k.rect(200, 70, { radius: 12 }),
+      k.color(34, 197, 94),
+      k.area(),
+      k.anchor("center"),
+      k.pos(VW / 2, 320),
+    ]);
 
-  playBtn.onClick(() => {
-    k.go("play");
+    k.add([
+      k.text("PLAY", { size: 28 }),
+      k.anchor("center"),
+      k.pos(VW / 2, 320),
+      k.color(255, 255, 255),
+    ]);
+
+    playBtn.onClick(() => {
+      k.go("play");
+    });
   });
-});
+
   k.scene("play", () => {
     let score = 0;
     let lives = MAX_LIVES;
     let nextProblemId = 0;
+    let currentProblemId: number | null = null;
     let currentLevel = 1;
     const activeProblems = new Map<number, { answer: number; pop: () => void }>();
     const choiceObjects: { destroy: () => void }[] = [];
-let currentChoices: number[] = [];
-let selectedChoice = 1;
-let typedAnswer = "";
-let answerButtons: any[] = [];
+    let currentChoices: number[] = [];
+    let selectedChoice = 1;
+    let typedAnswer = "";
+    let answerButtons: any[] = [];
     onScore(0);
 
     const scoreLabel = k.add([
@@ -138,22 +141,96 @@ let answerButtons: any[] = [];
       return k.shuffle(Array.from(choices));
     }
 
-    function clearChoices() {
-  for (const object of choiceObjects) object.destroy();
+    function setSelectedChoice(index: number): void {
+      selectedChoice = index;
+      answerButtons.forEach((button, buttonIndex) => {
+        button.outline = {
+          color: k.rgb(255, 255, 255),
+          width: buttonIndex === selectedChoice ? 5 : 2,
+        };
+      });
+    }
 
-  choiceObjects.length = 0;
-  currentChoices = [];
-  answerButtons = [];
-  typedAnswer = "";
-}
-    
+    function clearChoices(): void {
+      for (const object of choiceObjects) object.destroy();
+      choiceObjects.length = 0;
+      currentChoices = [];
+      answerButtons = [];
+      selectedChoice = -1;
+      typedAnswer = "";
+    }
 
-    function showChoices(answer: number, id: number) {
+    function submitChoice(index: number, id: number): void {
+      const problem = activeProblems.get(id);
+      const choice = currentChoices[index];
+      if (!problem || choice === undefined) return;
+
+      // A click or arrow-key choice resolves the round immediately.
+      problem.pop();
+      if (choice === problem.answer) {
+        score += 1;
+        updateLevel();
+        scoreLabel.text = `Score: ${score}`;
+        onScore(score);
+        feedbackLabel.text = "POP! Great job!";
+        feedbackLabel.color = k.rgb(34, 197, 94);
+      } else {
+        lives -= 1;
+        heartsLabel.text = `${"♥ ".repeat(lives)}${"♡ ".repeat(MAX_LIVES - lives)}`.trim();
+        feedbackLabel.text = "Wrong answer — the balloon popped!";
+        feedbackLabel.color = k.rgb(248, 72, 99);
+      }
+
+      if (lives <= 0) {
+        k.wait(0.65, () => k.go("over", score));
+      } else {
+        k.wait(0.65, spawnBall);
+      }
+    }
+
+    function chooseWithArrow(index: number): void {
+      if (currentProblemId !== null) submitChoice(index, currentProblemId);
+    }
+
+    k.onKeyPress("left", () => chooseWithArrow(0));
+    k.onKeyPress("down", () => chooseWithArrow(1));
+    k.onKeyPress("right", () => chooseWithArrow(2));
+
+    for (let digit = 0; digit <= 9; digit += 1) {
+      k.onKeyPress(String(digit), () => {
+        if (currentProblemId === null) return;
+
+        const id = currentProblemId;
+        const problem = activeProblems.get(id);
+        if (!problem) return;
+
+        typedAnswer += String(digit);
+        const matchingChoice = currentChoices.indexOf(Number(typedAnswer));
+        setSelectedChoice(matchingChoice);
+        feedbackLabel.text = `Your answer: ${typedAnswer} (Backspace to edit)`;
+
+        // Keep incorrect typed answers editable; the correct number pops the balloon.
+        if (matchingChoice >= 0 && Number(typedAnswer) === problem.answer) {
+          k.wait(0.2, () => submitChoice(matchingChoice, id));
+        }
+      });
+    }
+
+    k.onKeyPress("backspace", () => {
+      if (currentProblemId === null || typedAnswer.length === 0) return;
+      typedAnswer = typedAnswer.slice(0, -1);
+      const matchingChoice = currentChoices.indexOf(Number(typedAnswer));
+      setSelectedChoice(typedAnswer.length > 0 ? matchingChoice : -1);
+      feedbackLabel.text = typedAnswer
+        ? `Your answer: ${typedAnswer} (Backspace to edit)`
+        : "Type the answer, or use ← ↓ → to choose.";
+    });
+
+    function showChoices(answer: number, id: number): void {
       clearChoices();
       const choices = makeChoices(answer, currentLevel);
       currentChoices = choices;
-    selectedChoice = Math.min(1, choices.length - 1);
-      typedAnswer = "";
+      selectedChoice = Math.min(1, choices.length - 1);
       const choiceRadius = 32;
       const gap = 48;
       const totalWidth = choiceRadius * 2 * choices.length + gap * (choices.length - 1);
@@ -170,47 +247,26 @@ let answerButtons: any[] = [];
           k.pos(x, VH - 42),
         ]);
         answerButtons.push(button);
-        button.outline = { color: k.rgb(255, 255, 255), width: 3 };
+        button.outline = {
+          color: k.rgb(255, 255, 255),
+          width: index === selectedChoice ? 5 : 2,
+        };
         const label = k.add([
           k.text(String(choice), { size: 22 }),
           k.color(255, 255, 255),
           k.anchor("center"),
           k.pos(x, VH - 42),
         ]);
-        button.onClick(() => {
-          const problem = activeProblems.get(id);
-          if (!problem) return;
-
-          // Resolve the round on the first choice, whether it is right or wrong.
-          problem.pop();
-          if (choice === problem.answer) {
-            score += 1;
-            updateLevel();
-            scoreLabel.text = `Score: ${score}`;
-            onScore(score);
-            feedbackLabel.text = "POP! Great job!";
-            feedbackLabel.color = k.rgb(34, 197, 94);
-          } else {
-            lives -= 1;
-            heartsLabel.text = `${"♥ ".repeat(lives)}${"♡ ".repeat(MAX_LIVES - lives)}`.trim();
-            feedbackLabel.text = "Wrong answer — the balloon popped!";
-            feedbackLabel.color = k.rgb(248, 72, 99);
-          }
-
-          if (lives <= 0) {
-            k.wait(0.65, () => k.go("over", score));
-          } else {
-            k.wait(0.65, spawnBall);
-          }
-        });
+        button.onClick(() => submitChoice(index, id));
         choiceObjects.push(button, label);
       });
     }
 
-    function spawnBall() {
+    function spawnBall(): void {
       updateLevel();
       const problem = makeProblem(currentLevel);
       const id = nextProblemId++;
+      currentProblemId = id;
       const fallSpeed = 90 + currentLevel * 18;
       const ball = k.add([
         k.circle(BALL_RADIUS),
@@ -230,6 +286,7 @@ let answerButtons: any[] = [];
         pop: () => {
           if (!activeProblems.has(id)) return;
           activeProblems.delete(id);
+          if (currentProblemId === id) currentProblemId = null;
           clearChoices();
           let scale = 1;
           const shrink = ball.onUpdate(() => {
@@ -247,7 +304,7 @@ let answerButtons: any[] = [];
       });
 
       hintLabel.text = problem.hint;
-      feedbackLabel.text = "Tap an answer to pop the balloon!";
+      feedbackLabel.text = "Type the answer, or use ← ↓ → to choose.";
       feedbackLabel.color = k.rgb(190, 195, 210);
       showChoices(problem.answer, id);
 
