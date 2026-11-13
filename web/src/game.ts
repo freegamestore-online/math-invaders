@@ -59,9 +59,37 @@ k.scene("menu", () => {
     let lives = MAX_LIVES;
     let nextProblemId = 0;
     let currentLevel = 1;
-    const activeProblems = new Map<number, { answer: number; pop: () => void }>();
+    let levelTransitionPaused = false;
+    let currentProblemId: number | null = null;
+    let pausedProblemId: number | null = null;
+    const activeProblems = new Map<number, {
+      answer: number;
+      hint?: string;
+      choices?: number[];
+      lane?: number;
+      outline?: unknown;
+      pop: () => void;
+    }>();
     const choiceObjects: { destroy: () => void }[] = [];
+    const levelTransitionObjects: { destroy: () => void }[] = [];
+    let currentChoices: number[] = [];
+    let answerButtons: { destroy: () => void }[] = [];
+    let selectedChoice = -1;
+    let typedAnswer = "";
     onScore(0);
+
+    function removeKeyboardInput(): void {
+      // Keyboard input is handled by the active scene; nothing to clean up here.
+    }
+
+    function resumeLevelTransition(_fromMouse: boolean): void {
+      if (!levelTransitionPaused) return;
+      for (const object of levelTransitionObjects) object.destroy();
+      levelTransitionObjects.length = 0;
+      levelTransitionPaused = false;
+      currentProblemId = null;
+      pausedProblemId = null;
+    }
 
     const scoreLabel = k.add([
       k.text("Score: 0", { size: 18 }),
