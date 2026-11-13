@@ -25,15 +25,13 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     global: false,
     pixelDensity: Math.min(window.devicePixelRatio || 1, 2),
   });
-  let cleanupKeyboardInput: () => void = () => {};
-
-  k.scene("menu", () => {
-    k.add([
-      k.text("🎈 Math Balloon Pop", { size: 32 }),
-      k.anchor("center"),
-      k.pos(VW / 2, 180),
-      k.color(255, 255, 255),
-    ]);
+k.scene("menu", () => {
+  k.add([
+    k.text("🎈 Math Balloon Pop", { size: 32 }),
+    k.anchor("center"),
+    k.pos(VW / 2, 180),
+    k.color(255, 255, 255),
+  ]);
 
     const playBtn = k.add([
       k.rect(200, 70, { radius: 12 }),
@@ -60,25 +58,8 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     let score = 0;
     let lives = MAX_LIVES;
     let nextProblemId = 0;
-    let currentProblemId: number | null = null;
-    let pausedProblemId: number | null = null;
-    let answerSubmissionLocked = false;
-    let levelTransitionPaused = false;
-    let ignoreResumeBallClick = false;
     let currentLevel = 1;
-    let keyboardAttached = false;
-    const levelTransitionObjects: { destroy: () => void }[] = [];
-    const activeProblems = new Map<
-      number,
-      {
-        answer: number;
-        hint: string;
-        choices: number[];
-        lane: number;
-        outline: ReturnType<typeof k.outline>;
-        pop: () => void;
-      }
-    >();
+    const activeProblems = new Map<number, { answer: number; pop: () => void }>();
     const choiceObjects: { destroy: () => void }[] = [];
     onScore(0);
 
@@ -196,116 +177,18 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       return k.shuffle(Array.from(choices));
     }
 
-    function clearChoices(): void {
+    function clearChoices() {
       for (const object of choiceObjects) object.destroy();
       choiceObjects.length = 0;
+      currentChoices = [];
+      answerButtons = [];
+      selectedChoice = -1;
+      typedAnswer = "";
     }
 
-    function selectProblem(id: number, pauseForAnswer = false): void {
-      if (lives <= 0 || levelTransitionPaused) return;
-      const problem = activeProblems.get(id);
-      if (!problem) return;
-
-      currentProblemId = id;
-      if (pauseForAnswer) pausedProblemId = id;
-      activeProblems.forEach((active, activeId) => {
-        active.outline.outline.width = activeId === id ? 5 : 2;
-      });
-      hintLabel.text = problem.hint;
-      feedbackLabel.text = pauseForAnswer
-        ? "Paused — click a circle or use ← ↓ →."
-        : "Click a circle or use ← ↓ → to answer.";
-      feedbackLabel.color = k.rgb(190, 195, 210);
-      showChoices(problem.choices, id);
-      if (!keyboardAttached) {
-        window.addEventListener("keydown", handleKeyDown);
-        keyboardAttached = true;
-      }
-    }
-
-    function resumeLevelTransition(fromMouse: boolean): void {
-      if (!levelTransitionPaused) return;
-      levelTransitionPaused = false;
-      for (const object of levelTransitionObjects) object.destroy();
-      levelTransitionObjects.length = 0;
-      if (fromMouse) {
-        ignoreResumeBallClick = true;
-        k.wait(0.3, () => {
-          ignoreResumeBallClick = false;
-        });
-      }
-
-      const nextId = Array.from(activeProblems.keys()).pop();
-      if (nextId === undefined) {
-        spawnBall();
-      } else {
-        selectProblem(nextId);
-      }
-    }
-
-    function removeKeyboardInput(): void {
-      if (!keyboardAttached) return;
-      window.removeEventListener("keydown", handleKeyDown);
-      keyboardAttached = false;
-    }
-    cleanupKeyboardInput = removeKeyboardInput;
-
-    function loseLife(message: string): void {
-      lives -= 1;
-      heartsLabel.text = `${"♥ ".repeat(lives)}${"♡ ".repeat(MAX_LIVES - lives)}`.trim();
-      feedbackLabel.text = message;
-      feedbackLabel.color = k.rgb(248, 72, 99);
-
-      if (lives <= 0) {
-        currentProblemId = null;
-        clearChoices();
-        removeKeyboardInput();
-        k.wait(0.65, () => k.go("over", score));
-      }
-    }
-
-    function submitChoice(choice: number, id: number): void {
-      const problem = activeProblems.get(id);
-      if (answerSubmissionLocked || !problem || !problem.choices.includes(choice)) return;
-
-      answerSubmissionLocked = true;
-      problem.pop();
-      if (choice === problem.answer) {
-        score += 1;
-        updateLevel();
-        scoreLabel.text = `Score: ${score}`;
-        onScore(score);
-        feedbackLabel.text = "POP! Great job!";
-        feedbackLabel.color = k.rgb(34, 197, 94);
-      } else {
-        loseLife("Wrong answer — the balloon popped!");
-      }
-      if (lives > 0) {
-        k.wait(0.2, () => {
-          answerSubmissionLocked = false;
-          spawnBall();
-        });
-      }
-    }
-
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (currentProblemId === null) return;
-
-      const id = currentProblemId;
-      const problem = activeProblems.get(id);
-      if (!problem) return;
-
-      if (event.key === "ArrowLeft" || event.key === "ArrowDown" || event.key === "ArrowRight") {
-        event.preventDefault();
-        const index = event.key === "ArrowLeft" ? 0 : event.key === "ArrowDown" ? 1 : 2;
-        const choice = problem.choices[index];
-        if (choice !== undefined) submitChoice(choice, id);
-        return;
-      }
-    }
-
-    function showChoices(choices: number[], id: number): void {
+    function showChoices(answer: number, id: number) {
       clearChoices();
+      const choices = makeChoices(answer, currentLevel);
       const choiceRadius = 32;
       const gap = 48;
       const totalWidth = choiceRadius * 2 * choices.length + gap * (choices.length - 1);
@@ -322,30 +205,48 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
           k.pos(x, VH - 42),
           k.outline(2, k.rgb(255, 255, 255)),
         ]);
+        button.outline = { color: k.rgb(255, 255, 255), width: 3 };
         const label = k.add([
           k.text(String(choice), { size: 22 }),
           k.color(255, 255, 255),
           k.anchor("center"),
           k.pos(x, VH - 42),
-          k.area(),
         ]);
-        const answerIt = () => submitChoice(choice, id);
-        button.onClick(answerIt);
-        label.onClick(answerIt);
+        button.onClick(() => {
+          const problem = activeProblems.get(id);
+          if (!problem) return;
+
+          // Resolve the round on the first choice, whether it is right or wrong.
+          problem.pop();
+          if (choice === problem.answer) {
+            score += 1;
+            updateLevel();
+            scoreLabel.text = `Score: ${score}`;
+            onScore(score);
+            feedbackLabel.text = "POP! Great job!";
+            feedbackLabel.color = k.rgb(34, 197, 94);
+          } else {
+            lives -= 1;
+            heartsLabel.text = `${"♥ ".repeat(lives)}${"♡ ".repeat(MAX_LIVES - lives)}`.trim();
+            feedbackLabel.text = "Wrong answer — the balloon popped!";
+            feedbackLabel.color = k.rgb(248, 72, 99);
+          }
+
+          if (lives <= 0) {
+            k.wait(0.65, () => k.go("over", score));
+          } else {
+            k.wait(0.65, spawnBall);
+          }
+        });
         choiceObjects.push(button, label);
       });
     }
 
-    function spawnBall(): void {
-      if (activeProblems.size >= MAX_ACTIVE_BALLOONS || lives <= 0 || levelTransitionPaused) return;
+    function spawnBall() {
       updateLevel();
       const problem = makeProblem(currentLevel);
       const id = nextProblemId++;
-      const occupiedLanes = new Set(Array.from(activeProblems.values(), (active) => active.lane));
-      const lane = BALLOON_LANES.findIndex((_, index) => !occupiedLanes.has(index));
-      const laneX = BALLOON_LANES[lane];
-      if (laneX === undefined) return;
-      const outline = k.outline(2, k.rgb(255, 255, 255));
+      const fallSpeed = 90 + currentLevel * 18;
       const ball = k.add([
         k.circle(BALL_RADIUS),
         k.color(k.choose(ballColors)),
@@ -372,17 +273,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         pop: () => {
           if (!activeProblems.has(id)) return;
           activeProblems.delete(id);
-          if (pausedProblemId === id) pausedProblemId = null;
-          if (currentProblemId === id) {
-            currentProblemId = null;
-            const nextId = Array.from(activeProblems.keys()).pop();
-            if (nextId === undefined) {
-              clearChoices();
-              removeKeyboardInput();
-            } else {
-              selectProblem(nextId);
-            }
-          }
+          clearChoices();
           let scale = 1;
           const shrink = ball.onUpdate(() => {
             scale -= k.dt() * 5;
@@ -398,10 +289,10 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         },
       });
 
-      ball.onClick(() => {
-        if (!ignoreResumeBallClick) selectProblem(id, true);
-      });
-      if (currentProblemId === null) selectProblem(id);
+      hintLabel.text = problem.hint;
+      feedbackLabel.text = "Tap an answer to pop the balloon!";
+      feedbackLabel.color = k.rgb(190, 195, 210);
+      showChoices(problem.answer, id);
 
       ball.onUpdate(() => {
         if (
@@ -446,8 +337,5 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
   });
 
   k.go("menu");
-  return () => {
-    cleanupKeyboardInput();
-    k.quit();
-  };
+  return () => k.quit();
 }
