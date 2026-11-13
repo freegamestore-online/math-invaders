@@ -1,21 +1,13 @@
 import kaplay from "kaplay";
 
-// Select a falling math balloon and answer with a choice circle or arrow key.
+// Solve each math balloon by tapping an answer while it falls from the top.
 const VW = 400;
 const VH = 600;
 const BALL_RADIUS = 38;
-const BALLOON_GROUND_Y = VH - 170;
+const BALL_STOP_Y = VH - 170;
 const MAX_LIVES = 3;
-const MAX_ACTIVE_BALLOONS = 3;
-const BALLOON_SPAWN_INTERVAL = 2.5;
-const QUESTIONS_PER_LEVEL = 7;
-const MAX_LEVEL = 5;
-const BALLOON_LANES = [VW * 0.2, VW * 0.5, VW * 0.8];
 
 export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => void): () => void {
-  // Keep the game canvas focusable for keyboard play in desktop browsers.
-  if (canvas.tabIndex < 0) canvas.tabIndex = 0;
-
   const k = kaplay({
     canvas,
     width: VW,
@@ -33,63 +25,33 @@ k.scene("menu", () => {
     k.color(255, 255, 255),
   ]);
 
-    const playBtn = k.add([
-      k.rect(200, 70, { radius: 12 }),
-      k.color(34, 197, 94),
-      k.area(),
-      k.anchor("center"),
-      k.pos(VW / 2, 320),
-    ]);
+  const playBtn = k.add([
+    k.rect(200, 70, { radius: 12 }),
+    k.color(34, 197, 94),
+    k.area(),
+    k.anchor("center"),
+    k.pos(VW / 2, 320),
+  ]);
 
-    k.add([
-      k.text("PLAY", { size: 28 }),
-      k.anchor("center"),
-      k.pos(VW / 2, 320),
-      k.color(255, 255, 255),
-    ]);
+  k.add([
+    k.text("PLAY", { size: 28 }),
+    k.anchor("center"),
+    k.pos(VW / 2, 320),
+    k.color(255, 255, 255),
+  ]);
 
-    playBtn.onClick(() => {
-      canvas.focus();
-      k.go("play");
-    });
+  playBtn.onClick(() => {
+    k.go("play");
   });
-
+});
   k.scene("play", () => {
     let score = 0;
     let lives = MAX_LIVES;
     let nextProblemId = 0;
     let currentLevel = 1;
-    let levelTransitionPaused = false;
-    let currentProblemId: number | null = null;
-    let pausedProblemId: number | null = null;
-    const activeProblems = new Map<number, {
-      answer: number;
-      hint?: string;
-      choices?: number[];
-      lane?: number;
-      outline?: unknown;
-      pop: () => void;
-    }>();
+    const activeProblems = new Map<number, { answer: number; pop: () => void }>();
     const choiceObjects: { destroy: () => void }[] = [];
-    const levelTransitionObjects: { destroy: () => void }[] = [];
-    let currentChoices: number[] = [];
-    let answerButtons: { destroy: () => void }[] = [];
-    let selectedChoice = -1;
-    let typedAnswer = "";
     onScore(0);
-
-    function removeKeyboardInput(): void {
-      // Keyboard input is handled by the active scene; nothing to clean up here.
-    }
-
-    function resumeLevelTransition(_fromMouse: boolean): void {
-      if (!levelTransitionPaused) return;
-      for (const object of levelTransitionObjects) object.destroy();
-      levelTransitionObjects.length = 0;
-      levelTransitionPaused = false;
-      currentProblemId = null;
-      pausedProblemId = null;
-    }
 
     const scoreLabel = k.add([
       k.text("Score: 0", { size: 18 }),
@@ -97,7 +59,7 @@ k.scene("menu", () => {
       k.pos(16, 16),
     ]);
     const levelLabel = k.add([
-      k.text(`Level 1: 0/${QUESTIONS_PER_LEVEL}`, { size: 16 }),
+      k.text("Level 1", { size: 16 }),
       k.color(96, 165, 250),
       k.anchor("center"),
       k.pos(VW / 2, 22),
@@ -115,12 +77,11 @@ k.scene("menu", () => {
       k.pos(VW / 2, VH - 116),
     ]);
     const feedbackLabel = k.add([
-      k.text("Click a balloon to pause it, then choose an answer.", { size: 14 }),
+      k.text("Choose an answer to pop the balloon!", { size: 14 }),
       k.color(190, 195, 210),
       k.anchor("center"),
       k.pos(VW / 2, VH - 87),
     ]);
-    k.add([k.rect(VW, 2), k.color(100, 100, 110), k.pos(0, BALLOON_GROUND_Y)]);
 
     const ballColors = [
       k.rgb(239, 68, 68),
@@ -130,44 +91,12 @@ k.scene("menu", () => {
     ];
 
     function getLevelForScore(currentScore: number): number {
-      return Math.min(MAX_LEVEL, 1 + Math.floor(currentScore / QUESTIONS_PER_LEVEL));
+      return Math.min(5, 1 + Math.floor(currentScore / 3));
     }
 
     function updateLevel(): void {
-      const nextLevel = getLevelForScore(score);
-      if (nextLevel > currentLevel) {
-        currentLevel = nextLevel;
-        levelTransitionPaused = true;
-        currentProblemId = null;
-        pausedProblemId = null;
-        clearChoices();
-        removeKeyboardInput();
-        levelTransitionObjects.push(
-          k.add([
-            k.rect(300, 112, { radius: 12 }),
-            k.color(39, 39, 45),
-            k.anchor("center"),
-            k.pos(VW / 2, VH / 2),
-          ]),
-          k.add([
-            k.text(`Level ${currentLevel}`, { size: 30 }),
-            k.color(255, 255, 255),
-            k.anchor("center"),
-            k.pos(VW / 2, VH / 2 - 18),
-          ]),
-          k.add([
-            k.text("Click or press Space to continue", { size: 14 }),
-            k.color(190, 195, 210),
-            k.anchor("center"),
-            k.pos(VW / 2, VH / 2 + 22),
-          ]),
-        );
-      }
-      const questionsInLevel =
-        currentLevel === MAX_LEVEL && score >= MAX_LEVEL * QUESTIONS_PER_LEVEL
-          ? QUESTIONS_PER_LEVEL
-          : score % QUESTIONS_PER_LEVEL;
-      levelLabel.text = `Level ${currentLevel}: ${questionsInLevel}/${QUESTIONS_PER_LEVEL}`;
+      currentLevel = getLevelForScore(score);
+      levelLabel.text = `Level ${currentLevel}`;
     }
 
     function makeProblem(level: number): { text: string; answer: number; hint: string } {
@@ -177,7 +106,7 @@ k.scene("menu", () => {
       const first = Math.floor(k.rand(1, maxValue + 1));
       const second = Math.floor(k.rand(1, smallMax + 1));
 
-      if (k.rand(0, 1) < additionChance) {
+      if (k.rand() < additionChance) {
         return {
           text: `${first} + ${second}`,
           answer: first + second,
@@ -199,7 +128,7 @@ k.scene("menu", () => {
       const spread = Math.min(5, 2 + level);
       while (choices.size < 3) {
         const offset = Math.floor(k.rand(1, spread + 1));
-        const candidate = Math.max(0, answer + (k.rand(0, 1) < 0.5 ? -offset : offset));
+        const candidate = Math.max(0, answer + (k.rand() < 0.5 ? -offset : offset));
         choices.add(candidate);
       }
       return k.shuffle(Array.from(choices));
@@ -208,10 +137,6 @@ k.scene("menu", () => {
     function clearChoices() {
       for (const object of choiceObjects) object.destroy();
       choiceObjects.length = 0;
-      currentChoices = [];
-      answerButtons = [];
-      selectedChoice = -1;
-      typedAnswer = "";
     }
 
     function showChoices(answer: number, id: number) {
@@ -224,14 +149,13 @@ k.scene("menu", () => {
 
       choices.forEach((choice, index) => {
         const x = startX + index * (choiceRadius * 2 + gap);
-        const color = ballColors[index % ballColors.length] ?? k.rgb(255, 255, 255);
+        const color = ballColors[index % ballColors.length];
         const button = k.add([
           k.circle(choiceRadius),
           k.color(color),
           k.area(),
           k.anchor("center"),
           k.pos(x, VH - 42),
-          k.outline(2, k.rgb(255, 255, 255)),
         ]);
         button.outline = { color: k.rgb(255, 255, 255), width: 3 };
         const label = k.add([
@@ -278,26 +202,18 @@ k.scene("menu", () => {
       const ball = k.add([
         k.circle(BALL_RADIUS),
         k.color(k.choose(ballColors)),
-        k.area(),
         k.anchor("center"),
-        k.pos(laneX, -BALL_RADIUS),
-        k.scale(1),
-        outline,
+        k.pos(k.rand(BALL_RADIUS, VW - BALL_RADIUS), -BALL_RADIUS),
       ]);
       const equation = k.add([
         k.text(problem.text, { size: 20 }),
         k.color(255, 255, 255),
         k.anchor("center"),
         k.pos(ball.pos.x, ball.pos.y),
-        k.scale(1),
       ]);
 
       activeProblems.set(id, {
         answer: problem.answer,
-        hint: problem.hint,
-        choices: makeChoices(problem.answer, currentLevel),
-        lane,
-        outline,
         pop: () => {
           if (!activeProblems.has(id)) return;
           activeProblems.delete(id);
@@ -323,43 +239,19 @@ k.scene("menu", () => {
       showChoices(problem.answer, id);
 
       ball.onUpdate(() => {
-        if (
-          !activeProblems.has(id) ||
-          lives <= 0 ||
-          levelTransitionPaused ||
-          pausedProblemId === id
-        ) return;
-
-        const fallSpeed = 45 + (currentLevel - 1) * 15;
-        ball.pos.y = Math.min(
-          BALLOON_GROUND_Y - BALL_RADIUS,
-          ball.pos.y + fallSpeed * k.dt(),
-        );
+        // Let the balloon fall from the top, then hold it above the answer buttons.
+        ball.pos.y = Math.min(BALL_STOP_Y, ball.pos.y + fallSpeed * k.dt());
         equation.pos = ball.pos;
-        if (ball.pos.y + BALL_RADIUS >= BALLOON_GROUND_Y) {
-          activeProblems.get(id)?.pop();
-          loseLife("Missed balloon! One life lost.");
-          if (lives > 0) spawnBall();
-        }
       });
     }
 
-    function keepBalloonsComing(): void {
-      if (lives <= 0) return;
-      if (!levelTransitionPaused) spawnBall();
-      k.wait(BALLOON_SPAWN_INTERVAL, keepBalloonsComing);
-    }
-
-    k.onMousePress(() => resumeLevelTransition(true));
-    k.onKeyPress("space", () => resumeLevelTransition(false));
     spawnBall();
-    k.wait(BALLOON_SPAWN_INTERVAL, keepBalloonsComing);
   });
 
   k.scene("over", (finalScore: number) => {
     k.add([k.text("Game Over", { size: 40 }), k.anchor("center"), k.pos(VW / 2, VH / 2 - 30), k.color(255, 255, 255)]);
     k.add([k.text(`Score: ${finalScore}`, { size: 24 }), k.anchor("center"), k.pos(VW / 2, VH / 2 + 16), k.color(16, 185, 129)]);
-    k.add([k.text("tap or press Space to play again", { size: 16 }), k.anchor("center"), k.pos(VW / 2, VH / 2 + 56), k.color(160, 160, 160)]);
+    k.add([k.text("tap to play again", { size: 16 }), k.anchor("center"), k.pos(VW / 2, VH / 2 + 56), k.color(160, 160, 160)]);
     k.onMousePress(() => k.go("play"));
     k.onKeyPress("space", () => k.go("play"));
   });
