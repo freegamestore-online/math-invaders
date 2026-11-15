@@ -86,7 +86,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.pos(VW / 2, VH - 116),
     ]);
     const feedbackLabel = k.add([
-      k.text("Click a balloon, then click its answer • ↑ target • ← ↓ →", { size: 14 }),
+      k.text("Tap a balloon, then tap an answer", { size: 14 }),
       k.color(190, 195, 210),
       k.anchor("center"),
       k.pos(VW / 2, VH - 87),
@@ -274,6 +274,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       const equation = k.add([
         k.text(problem.text, { size: 20 }),
         k.color(255, 255, 255),
+        k.area(),
         k.anchor("center"),
         k.pos(ball.pos.x, ball.pos.y),
       ]);
@@ -300,13 +301,15 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         },
       });
 
-      // Clicking a balloon selects its problem just like pressing the up-arrow to cycle targets.
-      ball.onClick(() => {
+      // Route taps on both the balloon and its equation through selection only.
+      const selectThisBalloon = () => {
         if (isGameOver || !activeProblems.has(id)) return;
         selectedProblemId = id;
         selectedChoiceIndex = 0;
         showChoices();
-      });
+      };
+      ball.onClick(selectThisBalloon);
+      equation.onClick(selectThisBalloon);
 
       if (selectedProblemId === null) selectedProblemId = id;
       showChoices();
