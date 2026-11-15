@@ -6,6 +6,8 @@ const VH = 600;
 const BALL_RADIUS = 38;
 const BALL_GROUND_Y = VH - 165;
 const MAX_LIVES = 3;
+const MAX_LEVEL = 5;
+const QUESTIONS_PER_LEVEL = 5;
 
 export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => void): () => void {
   const k = kaplay({
@@ -68,7 +70,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.pos(16, 16),
     ]);
     const levelLabel = k.add([
-      k.text("Level 1", { size: 16 }),
+      k.text("Level 1/5", { size: 16 }),
       k.color(96, 165, 250),
       k.anchor("center"),
       k.pos(VW / 2, 22),
@@ -105,12 +107,12 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     ];
 
     function getLevelForScore(currentScore: number): number {
-      return Math.min(5, 1 + Math.floor(currentScore / 3));
+      return Math.min(MAX_LEVEL, 1 + Math.floor(currentScore / QUESTIONS_PER_LEVEL));
     }
 
     function updateLevel(): void {
       currentLevel = getLevelForScore(score);
-      levelLabel.text = `Level ${currentLevel}`;
+      levelLabel.text = `Level ${currentLevel}/${MAX_LEVEL}`;
     }
 
     function makeProblem(level: number): { text: string; answer: number } {
