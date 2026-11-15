@@ -86,7 +86,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.pos(VW / 2, VH - 116),
     ]);
     const feedbackLabel = k.add([
-      k.text("↑/↓ balloon  •  ←/→ answer  •  Enter to pop", { size: 14 }),
+      k.text("↑ balloon  •  ←/→ answer  •  Enter to pop", { size: 14 }),
       k.color(190, 195, 210),
       k.anchor("center"),
       k.pos(VW / 2, VH - 87),
@@ -255,7 +255,6 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     }
 
     k.onKeyPress("up", () => selectBalloon(-1));
-    k.onKeyPress("down", () => selectBalloon(1));
     k.onKeyPress("left", () => moveChoice(-1));
     k.onKeyPress("right", () => moveChoice(1));
     k.onKeyPress("enter", () => {
