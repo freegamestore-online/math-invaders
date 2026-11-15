@@ -86,7 +86,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.pos(VW / 2, VH - 116),
     ]);
     const feedbackLabel = k.add([
-      k.text("↑ balloon  •  ←/→ answer  •  Enter to pop", { size: 14 }),
+      k.text("↑ balloon  •  ← left  ↓ middle  → right answer", { size: 14 }),
       k.color(190, 195, 210),
       k.anchor("center"),
       k.pos(VW / 2, VH - 87),
@@ -246,22 +246,18 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       showChoices();
     }
 
-    function moveChoice(direction: number): void {
+    function answerAtChoice(index: number): void {
       if (selectedProblemId === null) return;
       const problem = activeProblems.get(selectedProblemId);
       if (!problem) return;
-      selectedChoiceIndex = (selectedChoiceIndex + direction + problem.choices.length) % problem.choices.length;
-      showChoices();
+      selectedChoiceIndex = index;
+      resolveProblem(selectedProblemId, problem.choices[index]);
     }
 
     k.onKeyPress("up", () => selectBalloon(-1));
-    k.onKeyPress("left", () => moveChoice(-1));
-    k.onKeyPress("right", () => moveChoice(1));
-    k.onKeyPress("enter", () => {
-      if (selectedProblemId === null) return;
-      const problem = activeProblems.get(selectedProblemId);
-      if (problem) resolveProblem(selectedProblemId, problem.choices[selectedChoiceIndex]);
-    });
+    k.onKeyPress("left", () => answerAtChoice(0));
+    k.onKeyPress("down", () => answerAtChoice(1));
+    k.onKeyPress("right", () => answerAtChoice(2));
 
     function spawnBall(): void {
       if (isGameOver) return;
