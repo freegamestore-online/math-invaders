@@ -160,7 +160,8 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       clearChoices();
       updateTargetLabel();
       if (selectedProblemId === null) return;
-      const problem = activeProblems.get(selectedProblemId);
+      const targetId = selectedProblemId;
+      const problem = activeProblems.get(targetId);
       if (!problem) return;
 
       const choiceRadius = 30;
@@ -187,7 +188,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
           k.anchor("center"),
           k.pos(x, VH - 42),
         ]);
-        button.onClick(() => resolveProblem(selectedProblemId!, choice));
+        button.onClick(() => resolveProblem(targetId, choice));
         choiceObjects.push(button, label);
       });
     }
@@ -210,6 +211,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     function resolveProblem(id: number, choice: number): void {
       const problem = activeProblems.get(id);
       if (!problem || isGameOver) return;
+      const wasSelected = selectedProblemId === id;
       problem.pop();
 
       if (choice === problem.answer) {
@@ -217,15 +219,18 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         updateLevel();
         scoreLabel.text = `Score: ${score}`;
         onScore(score);
-        feedbackLabel.text = "POP! Great job!";
+        feedbackLabel.text = "POP! Other balloons keep falling!";
         feedbackLabel.color = k.rgb(34, 197, 94);
       } else {
         loseLife("Wrong answer — the balloon popped!");
       }
 
       if (isGameOver) return;
-      selectedProblemId = activeProblems.keys().next().value ?? null;
-      selectedChoiceIndex = 0;
+      // Only remove the answered balloon. All other balloons stay active and keep falling.
+      if (wasSelected || selectedProblemId === null || !activeProblems.has(selectedProblemId)) {
+        selectedProblemId = activeProblems.keys().next().value ?? null;
+        selectedChoiceIndex = 0;
+      }
       showChoices();
     }
 
