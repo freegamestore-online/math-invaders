@@ -190,7 +190,9 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
           k.anchor("center"),
           k.pos(x, VH - 42),
         ]);
-        button.onClick(() => resolveProblem(targetId, choice));
+        // Use the same answer path as the keyboard arrows so tap and keyboard
+        // selection update the selected choice consistently.
+        button.onClick(() => answerAtChoice(index));
         choiceObjects.push(button, label);
       });
     }
