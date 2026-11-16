@@ -19,6 +19,9 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     global: false,
     pixelDensity: Math.min(window.devicePixelRatio || 1, 2),
   });
+  let handleCanvasAnswer: ((event: PointerEvent) => void) | null = null;
+  const handleCanvasPointerDown = (event: PointerEvent) => handleCanvasAnswer?.(event);
+  canvas.addEventListener("pointerdown", handleCanvasPointerDown);
 
   k.scene("menu", () => {
     k.add([
@@ -162,8 +165,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       clearChoices();
       updateTargetLabel();
       if (selectedProblemId === null) return;
-      const targetId = selectedProblemId;
-      const problem = activeProblems.get(targetId);
+      const problem = activeProblems.get(selectedProblemId);
       if (!problem) return;
 
       const choiceRadius = 30;
@@ -173,7 +175,6 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
 
       problem.choices.forEach((choice, index) => {
         const x = startX + index * (choiceRadius * 2 + gap);
-        const answerThisChoice = () => resolveProblem(targetId, choice);
         const button = k.add([
           k.circle(choiceRadius),
           k.color(ballColors[index % ballColors.length]),
@@ -185,7 +186,6 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
           color: k.rgb(255, 255, 255),
           width: index === selectedChoiceIndex ? 4 : 1,
         };
-        button.onClick(answerThisChoice);
         const label = k.add([
           k.text(String(choice), { size: 22 }),
           k.color(255, 255, 255),
@@ -193,7 +193,6 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
           k.anchor("center"),
           k.pos(x, VH - 42),
         ]);
-        label.onClick(answerThisChoice);
         choiceObjects.push(button, label);
       });
     }
@@ -254,6 +253,36 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       selectedChoiceIndex = index;
       resolveProblem(selectedProblemId, problem.choices[index]);
     }
+
+    handleCanvasAnswer = (event) => {
+      if (isGameOver || selectedProblemId === null) return;
+      const problem = activeProblems.get(selectedProblemId);
+      if (!problem) return;
+
+      // Convert pointer coordinates to virtual game coordinates, including letterboxing.
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const scale = Math.min(rect.width / VW, rect.height / VH);
+      const offsetX = (rect.width - VW * scale) / 2;
+      const offsetY = (rect.height - VH * scale) / 2;
+      const x = (event.clientX - rect.left - offsetX) / scale;
+      const y = (event.clientY - rect.top - offsetY) / scale;
+      const choiceY = VH - 42;
+      if (Math.abs(y - choiceY) > 42) return;
+
+      const choiceRadius = 30;
+      const gap = 30;
+      const totalWidth = choiceRadius * 2 * problem.choices.length + gap * (problem.choices.length - 1);
+      const startX = (VW - totalWidth) / 2 + choiceRadius;
+      for (let index = 0; index < problem.choices.length; index += 1) {
+        const choiceX = startX + index * (choiceRadius * 2 + gap);
+        if (Math.hypot(x - choiceX, y - choiceY) <= choiceRadius + 12) {
+          event.preventDefault();
+          answerAtChoice(index);
+          return;
+        }
+      }
+    };
 
     k.onKeyPress("up", () => selectBalloon(-1));
     k.onKeyPress("left", () => answerAtChoice(0));
@@ -355,5 +384,9 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
   });
 
   k.go("menu");
-  return () => k.quit();
+  return () => {
+    handleCanvasAnswer = null;
+    canvas.removeEventListener("pointerdown", handleCanvasPointerDown);
+    k.quit();
+  };
 }
