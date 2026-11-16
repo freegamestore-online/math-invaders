@@ -268,8 +268,6 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       updateLevel();
       const problem = makeProblem(currentLevel);
       const id = nextProblemId++;
-      let isPopping = false; // <-- NEW: only for THIS balloon
-
       const ball = k.add([
         k.circle(BALL_RADIUS),
         k.color(k.choose(ballColors)),
@@ -292,10 +290,22 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         pop: () => {
           if (!activeProblems.has(id)) return;
           activeProblems.delete(id);
-          isPopping = true; // <-- just set flag, don't add another onUpdate
+          let scale = 1;
+          const shrink = ball.onUpdate(() => {
+            scale -= k.dt() * 5;
+            ball.scale = k.vec2(Math.max(0, scale));
+            equation.scale = k.vec2(Math.max(0, scale));
+            equation.pos = ball.pos;
+            if (scale <= 0.05) {
+              shrink.cancel();
+              k.destroy(ball);
+              k.destroy(equation);
+            }
+          });
         },
       });
 
+      // Route taps on both the balloon and its equation through selection only.
       const selectThisBalloon = () => {
         if (isGameOver || !activeProblems.has(id)) return;
         selectedProblemId = id;
@@ -308,23 +318,9 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       if (selectedProblemId === null) selectedProblemId = id;
       showChoices();
 
-      // ONE onUpdate only - handles falling AND popping
       ball.onUpdate(() => {
-        if (isGameOver) return;
-
-        if (isPopping) {
-          // Shrink only this balloon, others keep falling
-          let s = Math.max(0, ball.scale.x - k.dt() * 5);
-          ball.scale = k.vec2(s);
-          equation.scale = k.vec2(s);
-          equation.pos = ball.pos;
-          if (s <= 0.05) {
-            k.destroy(ball);
-            k.destroy(equation);
-          }
-          return;
-        }
-
+        if (isGameOver || !activeProblems.has(id)) return;
+        // All balloons speed up as the player's level increases.
         const fallSpeed = 48 + (currentLevel - 1) * 16;
         ball.pos.y += fallSpeed * k.dt();
         equation.pos = ball.pos;
