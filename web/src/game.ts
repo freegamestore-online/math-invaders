@@ -60,6 +60,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     let selectedProblemId: number | null = null;
     let selectedChoiceIndex = 0;
     let isGameOver = false;
+    let lastTouchAnswerAt = 0;
     const activeProblems = new Map<number, {
       answer: number;
       text: string;
@@ -178,7 +179,12 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
 
       problem.choices.forEach((choice, index) => {
         const x = startX + index * (choiceRadius * 2 + gap);
-        const answerThisChoice = () => resolveProblem(targetId, choice);
+        const answerThisChoice = () => {
+          // Touch answers are handled on pointerdown for immediate feedback. Ignore
+          // the synthetic KAPLAY click that can follow the same tap on pointerup.
+          if (Date.now() - lastTouchAnswerAt < 500) return;
+          resolveProblem(targetId, choice);
+        };
         const button = k.add([
           k.circle(choiceRadius),
           k.color(ballColors[index % ballColors.length]),
@@ -282,6 +288,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         const choiceX = startX + index * (choiceRadius * 2 + gap);
         if (Math.hypot(x - choiceX, y - (VH - 42)) <= choiceRadius + 12) {
           event.preventDefault();
+          lastTouchAnswerAt = Date.now();
           answerAtChoice(index);
         }
       });
