@@ -216,8 +216,8 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
 
     function resolveProblem(id: number, choice: number): void {
       const problem = activeProblems.get(id);
-      if (!problem || isGameOver) return;
-      const wasSelected = selectedProblemId === id;
+      // Ignore stale answer clicks: only the currently selected balloon may pop.
+      if (!problem || isGameOver || selectedProblemId !== id) return;
       problem.pop();
 
       if (choice === problem.answer) {
@@ -232,11 +232,9 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       }
 
       if (isGameOver) return;
-      // Only remove the answered balloon. All other balloons stay active and keep falling.
-      if (wasSelected || selectedProblemId === null || !activeProblems.has(selectedProblemId)) {
-        selectedProblemId = activeProblems.keys().next().value ?? null;
-        selectedChoiceIndex = 0;
-      }
+      // Remove only the answered balloon; all other balloons remain active and keep falling.
+      selectedProblemId = activeProblems.keys().next().value ?? null;
+      selectedChoiceIndex = 0;
       showChoices();
     }
 
