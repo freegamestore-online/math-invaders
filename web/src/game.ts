@@ -19,6 +19,11 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     global: false,
     pixelDensity: Math.min(window.devicePixelRatio || 1, 2),
   });
+  let handleTouchAnswer: ((event: PointerEvent) => void) | null = null;
+  const handleCanvasPointerDown = (event: PointerEvent) => {
+    if (event.pointerType !== "mouse") handleTouchAnswer?.(event);
+  };
+  canvas.addEventListener("pointerdown", handleCanvasPointerDown);
 
   k.scene("menu", () => {
     k.add([
@@ -193,7 +198,6 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
           k.anchor("center"),
           k.pos(x, VH - 42),
         ]);
-        // Make the number itself clickable as well as the surrounding circle.
         label.onClick(answerThisChoice);
         choiceObjects.push(button, label);
       });
@@ -216,7 +220,6 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
 
     function resolveProblem(id: number, choice: number): void {
       const problem = activeProblems.get(id);
-      // Ignore stale answer clicks: only the currently selected balloon may pop.
       if (!problem || isGameOver || selectedProblemId !== id) return;
       problem.pop();
 
@@ -232,7 +235,6 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       }
 
       if (isGameOver) return;
-      // Remove only the answered balloon; all other balloons remain active and keep falling.
       selectedProblemId = activeProblems.keys().next().value ?? null;
       selectedChoiceIndex = 0;
       showChoices();
@@ -257,6 +259,33 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       selectedChoiceIndex = index;
       resolveProblem(selectedProblemId, problem.choices[index]);
     }
+
+    handleTouchAnswer = (event) => {
+      if (isGameOver || selectedProblemId === null) return;
+      const problem = activeProblems.get(selectedProblemId);
+      if (!problem) return;
+
+      // Convert the tap to the virtual game coordinates, including letterboxing.
+      const rect = canvas.getBoundingClientRect();
+      const scale = Math.min(rect.width / VW, rect.height / VH);
+      const offsetX = (rect.width - VW * scale) / 2;
+      const offsetY = (rect.height - VH * scale) / 2;
+      const x = (event.clientX - rect.left - offsetX) / scale;
+      const y = (event.clientY - rect.top - offsetY) / scale;
+      if (y < VH - 42 - 42 || y > VH - 42 + 42) return;
+
+      const choiceRadius = 30;
+      const gap = 30;
+      const totalWidth = choiceRadius * 2 * problem.choices.length + gap * (problem.choices.length - 1);
+      const startX = (VW - totalWidth) / 2 + choiceRadius;
+      problem.choices.forEach((_, index) => {
+        const choiceX = startX + index * (choiceRadius * 2 + gap);
+        if (Math.hypot(x - choiceX, y - (VH - 42)) <= choiceRadius + 12) {
+          event.preventDefault();
+          answerAtChoice(index);
+        }
+      });
+    };
 
     k.onKeyPress("up", () => selectBalloon(-1));
     k.onKeyPress("left", () => answerAtChoice(0));
@@ -305,7 +334,6 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
         },
       });
 
-      // Route taps on both the balloon and its equation through selection only.
       const selectThisBalloon = () => {
         if (isGameOver || !activeProblems.has(id)) return;
         selectedProblemId = id;
@@ -320,7 +348,6 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
 
       ball.onUpdate(() => {
         if (isGameOver || !activeProblems.has(id)) return;
-        // All balloons speed up as the player's level increases.
         const fallSpeed = 48 + (currentLevel - 1) * 16;
         ball.pos.y += fallSpeed * k.dt();
         equation.pos = ball.pos;
@@ -360,5 +387,9 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
   });
 
   k.go("menu");
-  return () => k.quit();
+  return () => {
+    handleTouchAnswer = null;
+    canvas.removeEventListener("pointerdown", handleCanvasPointerDown);
+    k.quit();
+  };
 }
