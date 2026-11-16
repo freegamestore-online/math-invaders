@@ -173,6 +173,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
 
       problem.choices.forEach((choice, index) => {
         const x = startX + index * (choiceRadius * 2 + gap);
+        const answerThisChoice = () => resolveProblem(targetId, choice);
         const button = k.add([
           k.circle(choiceRadius),
           k.color(ballColors[index % ballColors.length]),
@@ -184,15 +185,16 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
           color: k.rgb(255, 255, 255),
           width: index === selectedChoiceIndex ? 4 : 1,
         };
+        button.onClick(answerThisChoice);
         const label = k.add([
           k.text(String(choice), { size: 22 }),
           k.color(255, 255, 255),
+          k.area(),
           k.anchor("center"),
           k.pos(x, VH - 42),
         ]);
-        // Use the same answer path as the keyboard arrows so tap and keyboard
-        // selection update the selected choice consistently.
-        button.onClick(() => answerAtChoice(index));
+        // Make the number itself clickable as well as the surrounding circle.
+        label.onClick(answerThisChoice);
         choiceObjects.push(button, label);
       });
     }
