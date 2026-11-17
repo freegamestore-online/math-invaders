@@ -84,6 +84,12 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.anchor("topright"),
       k.pos(VW - 16, 12),
     ]);
+    k.add([
+      k.text("⌨ Arrow Keys Supported\n↑ Select Balloon\n← ↓ → Choose Answers", { size: 14 }),
+      k.color(190, 195, 210),
+      k.anchor("center"),
+      k.pos(VW / 2, 76),
+    ]);
     const hintLabel = k.add([
       k.text("Get ready...", { size: 16 }),
       k.color(250, 204, 21),
