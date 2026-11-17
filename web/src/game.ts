@@ -85,7 +85,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.pos(VW - 16, 12),
     ]);
     k.add([
-      k.text("⌨ Arrow Keys Supported\n↑ Select Balloon\n← ↓ → Choose Answers", { size: 14 }),
+      /*k.text("⌨ Arrow Keys Supported\n↑ Select Balloon\n← ↓ → Choose Answers", { size: 14 }),*/
       k.color(190, 195, 210),
       k.anchor("center"),
       k.pos(VW / 2, 76),
