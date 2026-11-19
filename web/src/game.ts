@@ -341,7 +341,7 @@ k.scene("menu", () => {
     k.onKeyPress("enter", () => k.go("play"));
     k.onKeyPress("space", () => k.go("play"));
   });
-
+ 
   k.go("menu");
   return () => k.quit();
 }
