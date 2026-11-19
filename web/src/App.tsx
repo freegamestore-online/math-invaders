@@ -13,10 +13,7 @@ export default function App() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    // startGame returns a teardown fn; run it on unmount so hot-reload / route
-    // changes don't leak a second KAPLAY instance onto the page.
-    const stop = startGame(canvas, setScore);
-    return stop;
+    return startGame(canvas, setScore);
   }, []);
 
   return (
