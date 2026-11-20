@@ -257,7 +257,19 @@ pauseLabel.hidden = true;
         choiceObjects.push(button, label);
       });
     }
+     function togglePause(): void {
+  paused = !paused;
 
+  if (paused) {
+    pauseLabel.hidden = false;
+    feedbackLabel.text = "PAUSED - Press P to Resume";
+    feedbackLabel.color = k.rgb(250, 204, 21);
+  } else {
+    pauseLabel.hidden = true;
+    feedbackLabel.text = "Game Resumed";
+    feedbackLabel.color = k.rgb(34, 197, 94);
+  }
+}
     function endGame(): void {
       if (isGameOver) return;
       isGameOver = true;
@@ -349,6 +361,7 @@ pauseLabel.hidden = true;
     k.onKeyPress("left", () => answerAtChoice(0));
     k.onKeyPress("down", () => answerAtChoice(1));
     k.onKeyPress("right", () => answerAtChoice(2));
+    k.onKeyPress("p", () => togglePause());
 
     function spawnBall(): void {
       if (isGameOver) return;
@@ -406,7 +419,9 @@ pauseLabel.hidden = true;
       showChoices();
 
       ball.onUpdate(() => {
-        if (isGameOver || !activeProblems.has(id)) return;
+        if (paused) return;
+
+    if (isGameOver || !activeProblems.has(id)) return;
         const fallSpeed = 48 + (currentLevel - 1) * 16;
         ball.pos.y += fallSpeed * k.dt();
         equation.pos = ball.pos;
@@ -425,10 +440,18 @@ pauseLabel.hidden = true;
 
     function scheduleNextBall(): void {
       const delay = Math.max(1.6, 3.4 - (currentLevel - 1) * 0.35);
-      k.wait(delay, () => {
-        if (isGameOver) return;
-        spawnBall();
-        scheduleNextBall();
+
+  k.wait(delay, () => {
+
+    if (paused) {
+      scheduleNextBall();
+      return;
+    }
+
+    if (isGameOver) return;
+
+    spawnBall();
+    scheduleNextBall();
       });
     }
 
