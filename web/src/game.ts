@@ -61,6 +61,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     const activeProblems = new Map<number, {
       answer: number;
       text: string;
+      hint: string;
       choices: number[];
       pop: () => void;
     }>();
@@ -91,7 +92,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.pos(VW / 2, 76),
     ]);
     const hintLabel = k.add([
-      k.text("Get ready...", { size: 16 }),
+      k.text("Get ready...", { size: 14 }),
       k.color(250, 204, 21),
       k.anchor("center"),
       k.pos(VW / 2, VH - 116),
@@ -116,7 +117,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     ];
 
     function getLevelForScore(currentScore: number): number {
-      return Math.min(MAX_LEVEL, 1 + Math.floor(currentScore / QUESTIONS_PER_LEVEL));
+      return Math.min(MAX_LEVEL, Math.floor(currentScore / QUESTIONS_PER_LEVEL) + 1);
     }
 
     function updateLevel(): void {
@@ -124,20 +125,65 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       levelLabel.text = `Level ${currentLevel}/${MAX_LEVEL}`;
     }
 
-    function makeProblem(level: number): { text: string; answer: number } {
-      const additionChance = level < 2 ? 0.75 : 0.5;
-      const maxValue = 4 + level * 2;
-      const smallMax = Math.min(5 + level, 9);
-      const first = Math.floor(k.rand(1, maxValue + 1));
-      const second = Math.floor(k.rand(1, smallMax + 1));
+    function makeProblem(level: number): { text: string; answer: number; hint: string } {
+      switch (level) {
+        // LEVEL 1 - ADDITION
+        case 1: {
+          const a = Math.floor(k.rand(1, 11));
+          const b = Math.floor(k.rand(1, 11));
+          return {
+            text: `${a} + ${b}`,
+            answer: a + b,
+            hint: `Hint: add ${a} and ${b}`,
+          };
+        }
 
-      if (k.rand() < additionChance) {
-        return { text: `${first} + ${second}`, answer: first + second };
+        // LEVEL 2 - SUBTRACTION
+        case 2: {
+          const a = Math.floor(k.rand(5, 21));
+          const b = Math.floor(k.rand(1, a + 1));
+          return {
+            text: `${a} - ${b}`,
+            answer: a - b,
+            hint: `Hint: subtract ${b} from ${a}`,
+          };
+        }
+
+        // LEVEL 3 - DIVISION
+        case 3: {
+          const answer = Math.floor(k.rand(1, 11));
+          const divisor = Math.floor(k.rand(1, 11));
+          const dividend = answer * divisor;
+          return {
+            text: `${dividend} ÷ ${divisor}`,
+            answer,
+            hint: `Hint: ${dividend} divided by ${divisor}`,
+          };
+        }
+
+        // LEVEL 4 - MULTIPLICATION
+        case 4: {
+          const a = Math.floor(k.rand(1, 13));
+          const b = Math.floor(k.rand(1, 13));
+          return {
+            text: `${a} × ${b}`,
+            answer: a * b,
+            hint: `Hint: multiply ${a} by ${b}`,
+          };
+        }
+
+        // LEVEL 5 - HARD DIVISION
+        default: {
+          const answer = Math.floor(k.rand(2, 16));
+          const divisor = Math.floor(k.rand(2, 13));
+          const dividend = answer * divisor;
+          return {
+            text: `${dividend} ÷ ${divisor}`,
+            answer,
+            hint: `Hint: ${dividend} divided by ${divisor}`,
+          };
+        }
       }
-
-      const larger = Math.max(first, second);
-      const smaller = Math.min(first, second);
-      return { text: `${larger} - ${smaller}`, answer: larger - smaller };
     }
 
     function makeChoices(answer: number, level: number): number[] {
@@ -164,7 +210,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       }
       const index = ids.indexOf(selectedProblemId);
       const problem = activeProblems.get(selectedProblemId);
-      if (problem) hintLabel.text = `Target ${index + 1}/${ids.length}: ${problem.text} = ?`;
+      if (problem) hintLabel.text = `Target ${index + 1}/${ids.length}: ${problem.text} = ?\n${problem.hint}`;
     }
 
     function showChoices(): void {
@@ -318,6 +364,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       activeProblems.set(id, {
         answer: problem.answer,
         text: problem.text,
+        hint: problem.hint,
         choices: makeChoices(problem.answer, currentLevel),
         pop: () => {
           if (!activeProblems.has(id)) return;
