@@ -58,6 +58,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     let selectedProblemId: number | null = null;
     let selectedChoiceIndex = 0;
     let isGameOver = false;
+    let paused = false;
     const activeProblems = new Map<number, {
       answer: number;
       text: string;
@@ -103,6 +104,14 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.anchor("center"),
       k.pos(VW / 2, VH - 87),
     ]);
+    const pauseLabel = k.add([
+  k.text("PAUSED", { size: 32 }),
+  k.color(255, 255, 255),
+  k.anchor("center"),
+  k.pos(VW / 2, VH / 2),
+]);
+
+pauseLabel.hidden = true;
     k.add([
       k.rect(VW, 4),
       k.color(248, 72, 99),
