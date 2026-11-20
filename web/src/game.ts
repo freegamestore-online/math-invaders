@@ -8,7 +8,12 @@ const BALL_GROUND_Y = VH - 165;
 const MAX_LIVES = 3;
 const MAX_LEVEL = 5;
 const QUESTIONS_PER_LEVEL = 5;
+const BALLOON_SPAWN_INTERVAL = 2.5;
 const BALLOON_LANES = [VW * 0.2, VW * 0.5, VW * 0.8];
+
+function getLevelForScore(score: number): number {
+  return Math.min(MAX_LEVEL, Math.floor(score / QUESTIONS_PER_LEVEL) + 1);
+}
 
 export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => void): () => void {
   // Keep the game canvas focusable for keyboard play in desktop browsers.
@@ -51,11 +56,19 @@ k.scene("menu", () => {
   });
 
   k.scene("play", (startLevel: number = 1) => {
-    let score = 0;
+    const initialLevel = Math.min(MAX_LEVEL, Math.max(1, startLevel));
+    let score = (initialLevel - 1) * QUESTIONS_PER_LEVEL;
     let lives = MAX_LIVES;
     let nextProblemId = 0;
-    let currentLevel = 1;
-    const activeProblems = new Map<number, { answer: number; pop: () => void }>();
+    let currentLevel = initialLevel;
+    let levelTransitionPaused = false;
+    let selectedProblemId: number | null = null;
+    let pausedProblemId: number | null = null;
+    const levelTransitionObjects: { destroy: () => void }[] = [];
+    const activeProblems = new Map<
+      number,
+      { text: string; answer: number; choices: number[]; pop: () => void }
+    >();
     const choiceObjects: { destroy: () => void }[] = [];
     onScore(0);
 
@@ -102,10 +115,9 @@ k.scene("menu", () => {
       if (nextLevel > currentLevel) {
         currentLevel = nextLevel;
         levelTransitionPaused = true;
-        currentProblemId = null;
+        selectedProblemId = null;
         pausedProblemId = null;
         clearChoices();
-        removeKeyboardInput();
         levelTransitionObjects.push(
           k.add([
             k.rect(300, 112, { radius: 12 }),
@@ -163,7 +175,7 @@ k.scene("menu", () => {
       const spread = Math.min(5, 2 + level);
       while (choices.size < 3) {
         const offset = Math.floor(k.rand(1, spread + 1));
-        const candidate = Math.max(0, answer + (k.rand() < 0.5 ? -offset : offset));
+        const candidate = Math.max(0, answer + (k.rand(0, 1) < 0.5 ? -offset : offset));
         choices.add(candidate);
       }
       return k.shuffle(Array.from(choices));
@@ -189,7 +201,8 @@ k.scene("menu", () => {
       clearChoices();
       updateTargetLabel();
       if (selectedProblemId === null) return;
-      const problem = activeProblems.get(selectedProblemId);
+      const id = selectedProblemId;
+      const problem = activeProblems.get(id);
       if (!problem) return;
 
       const choiceRadius = 30;
@@ -201,12 +214,12 @@ k.scene("menu", () => {
         const x = startX + index * (choiceRadius * 2 + gap);
         const button = k.add([
           k.circle(choiceRadius),
-          k.color(color),
+          k.color(k.rgb(59, 130, 246)),
           k.area(),
           k.anchor("center"),
           k.pos(x, VH - 42),
+          k.outline(3, k.rgb(255, 255, 255)),
         ]);
-        button.outline = { color: k.rgb(255, 255, 255), width: 3 };
         const label = k.add([
           k.text(String(choice), { size: 22 }),
           k.color(255, 255, 255),
@@ -244,10 +257,20 @@ k.scene("menu", () => {
       });
     }
 
+    function resumeLevelTransition(_fromMouse: boolean): void {
+      if (!levelTransitionPaused) return;
+      levelTransitionPaused = false;
+      for (const object of levelTransitionObjects) object.destroy();
+      levelTransitionObjects.length = 0;
+      selectedProblemId = activeProblems.keys().next().value ?? null;
+      showChoices();
+    }
+
     function spawnBall() {
       updateLevel();
       const problem = makeProblem(currentLevel);
       const id = nextProblemId++;
+      const laneX = k.choose(BALLOON_LANES);
       const ball = k.add([
         k.circle(BALL_RADIUS),
         k.color(k.choose(ballColors)),
@@ -255,7 +278,7 @@ k.scene("menu", () => {
         k.anchor("center"),
         k.pos(laneX, -BALL_RADIUS),
         k.scale(1),
-        outline,
+        k.outline(2, k.rgb(255, 255, 255)),
       ]);
       const equation = k.add([
         k.text(problem.text, { size: 20 }),
@@ -275,7 +298,7 @@ k.scene("menu", () => {
           activeProblems.delete(id);
           let scale = 1;
           const shrink = ball.onUpdate(() => {
-            if (isPaused) return;
+            if (levelTransitionPaused) return;
             scale -= k.dt() * 5;
             ball.scale = k.vec2(Math.max(0, scale));
             equation.scale = k.vec2(Math.max(0, scale));
@@ -292,7 +315,8 @@ k.scene("menu", () => {
       hintLabel.text = problem.hint;
       feedbackLabel.text = "Tap an answer to pop the balloon!";
       feedbackLabel.color = k.rgb(190, 195, 210);
-      showChoices(problem.answer, id);
+      selectedProblemId = id;
+      showChoices();
 
       ball.onUpdate(() => {
         if (
@@ -304,7 +328,7 @@ k.scene("menu", () => {
 
         const fallSpeed = 45 + (currentLevel - 1) * 15;
         ball.pos.y = Math.min(
-          BALLOON_GROUND_Y - BALL_RADIUS,
+          BALL_GROUND_Y - BALL_RADIUS,
           ball.pos.y + fallSpeed * k.dt(),
         );
         equation.pos = ball.pos;
@@ -312,8 +336,15 @@ k.scene("menu", () => {
           const missedProblem = activeProblems.get(id);
           if (!missedProblem) return;
           missedProblem.pop();
-          loseLife("A balloon hit the ground — life lost!");
-          if (!isGameOver) {
+
+          lives -= 1;
+          heartsLabel.text = `${"♥ ".repeat(lives)}${"♡ ".repeat(MAX_LIVES - lives)}`.trim();
+          feedbackLabel.text = "A balloon hit the ground — life lost!";
+          feedbackLabel.color = k.rgb(248, 72, 99);
+
+          if (lives <= 0) {
+            k.wait(0.65, () => k.go("over", score));
+          } else {
             if (selectedProblemId === id) selectedProblemId = activeProblems.keys().next().value ?? null;
             showChoices();
           }
@@ -330,11 +361,10 @@ k.scene("menu", () => {
     k.onMousePress(() => resumeLevelTransition(true));
     k.onKeyPress("space", () => resumeLevelTransition(false));
     spawnBall();
-    scheduleNextBall();
+    keepBalloonsComing();
   });
 
   k.scene("over", (finalScore: number) => {
-    togglePause = () => {};
     k.add([k.text("Game Over", { size: 40 }), k.anchor("center"), k.pos(VW / 2, VH / 2 - 30), k.color(255, 255, 255)]);
     k.add([k.text(`Score: ${finalScore}`, { size: 24 }), k.anchor("center"), k.pos(VW / 2, VH / 2 + 16), k.color(16, 185, 129)]);
     k.add([k.text("tap or press Enter to play again", { size: 16 }), k.anchor("center"), k.pos(VW / 2, VH / 2 + 56), k.color(160, 160, 160)]);
