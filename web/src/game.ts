@@ -7,6 +7,7 @@ const BALL_RADIUS = 38;
 const BALL_GROUND_Y = VH - 165;
 const MAX_LIVES = 3;
 const MAX_LEVEL = 5;
+const QUESTIONS_PER_LEVEL = 5;
 const BALLOON_LANES = [VW * 0.2, VW * 0.5, VW * 0.8];
 
 export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => void): () => void {
@@ -87,7 +88,7 @@ k.scene("menu", () => {
       k.anchor("center"),
       k.pos(VW / 2, VH - 87),
     ]);
-    k.add([k.rect(VW, 2), k.color(100, 100, 110), k.pos(0, BALLOON_GROUND_Y)]);
+    k.add([k.rect(VW, 2), k.color(100, 100, 110), k.pos(0, BALL_GROUND_Y)]);
 
     const ballColors = [
       k.rgb(239, 68, 68),
