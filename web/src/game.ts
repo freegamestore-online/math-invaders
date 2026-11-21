@@ -1,3 +1,4 @@
+
 import kaplay from "kaplay";
 
 // Solve each math balloon by choosing its answer before it reaches the ground.
@@ -20,7 +21,11 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     pixelDensity: Math.min(window.devicePixelRatio || 1, 2),
   });
   let handleCanvasAnswer: ((event: PointerEvent) => void) | null = null;
-  const handleCanvasPointerDown = (event: PointerEvent) => handleCanvasAnswer?.(event);
+  const handleCanvasPointerDown = (event: PointerEvent): void => {
+    if (typeof handleCanvasAnswer === "function") {
+      handleCanvasAnswer(event);
+    }
+  };
   canvas.addEventListener("pointerdown", handleCanvasPointerDown);
 
   k.scene("menu", () => {
@@ -59,6 +64,8 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     let selectedChoiceIndex = 0;
     let isGameOver = false;
     let paused = false;
+    let levelTransitionPaused = false;
+    const levelTransitionObjects: { destroy: () => void }[] = [];
     const activeProblems = new Map<number, {
       answer: number;
       text: string;
@@ -126,6 +133,18 @@ pauseLabel.hidden = true;
     function updateLevel(): void {
       currentLevel = getLevelForScore(score);
       levelLabel.text = `Level ${currentLevel}/${MAX_LEVEL}`;
+    }
+
+    function loseLife(message: string): void {
+      if (isGameOver) return;
+      lives -= 1;
+      heartsLabel.text = `${"♥ ".repeat(lives)}${"♡ ".repeat(MAX_LIVES - lives)}`.trim();
+      feedbackLabel.text = message;
+      feedbackLabel.color = k.rgb(248, 72, 99);
+      if (lives <= 0) {
+        isGameOver = true;
+        k.wait(0.65, () => k.go("over", score));
+      }
     }
 
     function makeProblem(level: number): { text: string; answer: number; hint: string } {
@@ -307,6 +326,7 @@ pauseLabel.hidden = true;
         k.area(),
         k.anchor("center"),
         k.pos(ball.pos.x, ball.pos.y),
+        k.scale(1),
       ]);
 
       activeProblems.set(id, {
