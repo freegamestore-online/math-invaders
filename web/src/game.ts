@@ -1,4 +1,3 @@
-
 import kaplay from "kaplay";
 
 // Solve each math balloon by choosing its answer before it reaches the ground.
@@ -21,11 +20,7 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     pixelDensity: Math.min(window.devicePixelRatio || 1, 2),
   });
   let handleCanvasAnswer: ((event: PointerEvent) => void) | null = null;
-  const handleCanvasPointerDown = (event: PointerEvent): void => {
-    if (typeof handleCanvasAnswer === "function") {
-      handleCanvasAnswer(event);
-    }
-  };
+  const handleCanvasPointerDown = (event: PointerEvent) => handleCanvasAnswer?.(event);
   canvas.addEventListener("pointerdown", handleCanvasPointerDown);
 
   k.scene("menu", () => {
@@ -64,8 +59,6 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
     let selectedChoiceIndex = 0;
     let isGameOver = false;
     let paused = false;
-    let levelTransitionPaused = false;
-    const levelTransitionObjects: { destroy: () => void }[] = [];
     const activeProblems = new Map<number, {
       answer: number;
       text: string;
@@ -92,6 +85,12 @@ export function startGame(canvas: HTMLCanvasElement, onScore: (n: number) => voi
       k.color(248, 72, 99),
       k.anchor("topright"),
       k.pos(VW - 16, 12),
+    ]);
+    k.add([
+      /*k.text("⌨ Arrow Keys Supported\n↑ Select Balloon\n← ↓ → Choose Answers", { size: 14 }),*/
+      k.color(190, 195, 210),
+      k.anchor("center"),
+      k.pos(VW / 2, 76),
     ]);
     const hintLabel = k.add([
       k.text("Get ready...", { size: 14 }),
@@ -133,18 +132,6 @@ pauseLabel.hidden = true;
     function updateLevel(): void {
       currentLevel = getLevelForScore(score);
       levelLabel.text = `Level ${currentLevel}/${MAX_LEVEL}`;
-    }
-
-    function loseLife(message: string): void {
-      if (isGameOver) return;
-      lives -= 1;
-      heartsLabel.text = `${"♥ ".repeat(lives)}${"♡ ".repeat(MAX_LIVES - lives)}`.trim();
-      feedbackLabel.text = message;
-      feedbackLabel.color = k.rgb(248, 72, 99);
-      if (lives <= 0) {
-        isGameOver = true;
-        k.wait(0.65, () => k.go("over", score));
-      }
     }
 
     function makeProblem(level: number): { text: string; answer: number; hint: string } {
@@ -251,11 +238,10 @@ pauseLabel.hidden = true;
         const x = startX + index * (choiceRadius * 2 + gap);
         const button = k.add([
           k.circle(choiceRadius),
-          k.color(k.rgb(59, 130, 246)),
+          k.color(ballColors[index % ballColors.length]),
           k.area(),
           k.anchor("center"),
           k.pos(x, VH - 42),
-          k.outline(3, k.rgb(255, 255, 255)),
         ]);
         button.outline = {
           color: k.rgb(255, 255, 255),
@@ -268,46 +254,117 @@ pauseLabel.hidden = true;
           k.anchor("center"),
           k.pos(x, VH - 42),
         ]);
-        button.onClick(() => {
-          const problem = activeProblems.get(id);
-          if (!problem) return;
-
-          // Resolve the round on the first choice, whether it is right or wrong.
-          problem.pop();
-          if (choice === problem.answer) {
-            score += 1;
-            updateLevel();
-            scoreLabel.text = `Score: ${score}`;
-            onScore(score);
-            feedbackLabel.text = "POP! Great job!";
-            feedbackLabel.color = k.rgb(34, 197, 94);
-          } else {
-            lives -= 1;
-            heartsLabel.text = `${"♥ ".repeat(lives)}${"♡ ".repeat(MAX_LIVES - lives)}`.trim();
-            feedbackLabel.text = "Wrong answer — the balloon popped!";
-            feedbackLabel.color = k.rgb(248, 72, 99);
-          }
-
-          if (lives <= 0) {
-            k.wait(0.65, () => k.go("over", score));
-          } else {
-            k.wait(0.65, spawnBall);
-          }
-        });
         choiceObjects.push(button, label);
       });
     }
+     function togglePause(): void {
+  paused = !paused;
 
-    function resumeLevelTransition(_fromMouse: boolean): void {
-      if (!levelTransitionPaused) return;
-      levelTransitionPaused = false;
-      for (const object of levelTransitionObjects) object.destroy();
-      levelTransitionObjects.length = 0;
+  if (paused) {
+    pauseLabel.hidden = false;
+    feedbackLabel.text = "PAUSED - Press P to Resume";
+    feedbackLabel.color = k.rgb(250, 204, 21);
+  } else {
+    pauseLabel.hidden = true;
+    feedbackLabel.text = "Game Resumed";
+    feedbackLabel.color = k.rgb(34, 197, 94);
+  }
+}
+    function endGame(): void {
+      if (isGameOver) return;
+      isGameOver = true;
+      clearChoices();
+      k.wait(0.65, () => k.go("over", score));
+    }
+
+    function loseLife(message: string): void {
+      lives -= 1;
+      heartsLabel.text = `${"♥ ".repeat(Math.max(0, lives))}${"♡ ".repeat(MAX_LIVES - Math.max(0, lives))}`.trim();
+      feedbackLabel.text = message;
+      feedbackLabel.color = k.rgb(248, 72, 99);
+      if (lives <= 0) endGame();
+    }
+
+    function resolveProblem(id: number, choice: number): void {
+      const problem = activeProblems.get(id);
+      if (!problem || isGameOver || selectedProblemId !== id) return;
+      problem.pop();
+
+      if (choice === problem.answer) {
+        score += 1;
+        updateLevel();
+        scoreLabel.text = `Score: ${score}`;
+        onScore(score);
+        feedbackLabel.text = "POP! Other balloons keep falling!";
+        feedbackLabel.color = k.rgb(34, 197, 94);
+      } else {
+        loseLife("Wrong answer — the balloon popped!");
+      }
+
+      if (isGameOver) return;
       selectedProblemId = activeProblems.keys().next().value ?? null;
+      selectedChoiceIndex = 0;
       showChoices();
     }
 
-    function spawnBall() {
+    function selectBalloon(direction: number): void {
+      const ids = Array.from(activeProblems.keys());
+      if (ids.length === 0) return;
+      const currentIndex = selectedProblemId === null ? -1 : ids.indexOf(selectedProblemId);
+      const nextIndex = currentIndex < 0
+        ? 0
+        : (currentIndex + direction + ids.length) % ids.length;
+      selectedProblemId = ids[nextIndex];
+      selectedChoiceIndex = 0;
+      showChoices();
+    }
+
+    function answerAtChoice(index: number): void {
+      if (selectedProblemId === null) return;
+      const problem = activeProblems.get(selectedProblemId);
+      if (!problem) return;
+      selectedChoiceIndex = index;
+      resolveProblem(selectedProblemId, problem.choices[index]);
+    }
+
+    handleCanvasAnswer = (event) => {
+      if (isGameOver || selectedProblemId === null) return;
+      const problem = activeProblems.get(selectedProblemId);
+      if (!problem) return;
+
+      // Convert pointer coordinates to virtual game coordinates, including letterboxing.
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const scale = Math.min(rect.width / VW, rect.height / VH);
+      const offsetX = (rect.width - VW * scale) / 2;
+      const offsetY = (rect.height - VH * scale) / 2;
+      const x = (event.clientX - rect.left - offsetX) / scale;
+      const y = (event.clientY - rect.top - offsetY) / scale;
+      const choiceY = VH - 42;
+      if (Math.abs(y - choiceY) > 42) return;
+
+      const choiceRadius = 30;
+      const gap = 30;
+      const totalWidth = choiceRadius * 2 * problem.choices.length + gap * (problem.choices.length - 1);
+      const startX = (VW - totalWidth) / 2 + choiceRadius;
+      for (let index = 0; index < problem.choices.length; index += 1) {
+        const choiceX = startX + index * (choiceRadius * 2 + gap);
+        if (Math.hypot(x - choiceX, y - choiceY) <= choiceRadius + 12) {
+          event.preventDefault();
+          answerAtChoice(index);
+          return;
+        }
+      }
+    };
+
+    k.onKeyPress("up", () => selectBalloon(-1));
+    k.onKeyPress("left", () => answerAtChoice(0));
+    k.onKeyPress("down", () => answerAtChoice(1));
+    k.onKeyPress("right", () => answerAtChoice(2));
+    k.onKeyPress("p", () => togglePause());
+
+    function spawnBall(): void {
+      if (isGameOver) return;
       updateLevel();
       const problem = makeProblem(currentLevel);
       const id = nextProblemId++;
@@ -316,9 +373,7 @@ pauseLabel.hidden = true;
         k.color(k.choose(ballColors)),
         k.area(),
         k.anchor("center"),
-        k.pos(laneX, -BALL_RADIUS),
-        k.scale(1),
-        k.outline(2, k.rgb(255, 255, 255)),
+        k.pos(k.rand(BALL_RADIUS, VW - BALL_RADIUS), -BALL_RADIUS),
       ]);
       const equation = k.add([
         k.text(problem.text, { size: 20 }),
@@ -326,7 +381,6 @@ pauseLabel.hidden = true;
         k.area(),
         k.anchor("center"),
         k.pos(ball.pos.x, ball.pos.y),
-        k.scale(1),
       ]);
 
       activeProblems.set(id, {
@@ -352,10 +406,16 @@ pauseLabel.hidden = true;
         },
       });
 
-      hintLabel.text = problem.hint;
-      feedbackLabel.text = "Tap an answer to pop the balloon!";
-      feedbackLabel.color = k.rgb(190, 195, 210);
-      selectedProblemId = id;
+      const selectThisBalloon = () => {
+        if (isGameOver || !activeProblems.has(id)) return;
+        selectedProblemId = id;
+        selectedChoiceIndex = 0;
+        showChoices();
+      };
+      ball.onClick(selectThisBalloon);
+      equation.onClick(selectThisBalloon);
+
+      if (selectedProblemId === null) selectedProblemId = id;
       showChoices();
 
       ball.onUpdate(() => {
@@ -409,5 +469,9 @@ pauseLabel.hidden = true;
   });
 
   k.go("menu");
-  return () => k.quit();
+  return () => {
+    handleCanvasAnswer = null;
+    canvas.removeEventListener("pointerdown", handleCanvasPointerDown);
+    k.quit();
+  };
 }
